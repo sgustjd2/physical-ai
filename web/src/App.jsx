@@ -303,9 +303,9 @@ export default function App() {
         .map(({ source, target, sourceHandle }) => ({ source, target, sourceHandle, other: labelOf(ids.has(source) ? target : source) }))
       deleteElements({ nodes: [...ids].map((id) => ({ id })) })
         .then(() => { clip.current.links = { external, bridges: bridged.current } })
-        .then(() => setNotice({ tone: 'info', text: `블록 ${n}개를 잘라냈습니다. Ctrl+V 또는 붙여넣기 버튼으로 붙이면 이 워크플로에서는 원래 자리로 돌아갑니다.` }))
+        .then(() => setNotice({ tone: 'info', text: `블록 ${n}개를 잘라냈습니다. 붙여넣으면 원래 자리로 돌아갑니다.` }))
     } else {
-      setNotice({ tone: 'info', text: `블록 ${n}개를 복사했습니다. Ctrl+V 또는 붙여넣기 버튼으로 붙여넣습니다 (다른 워크플로에도 가능).` })
+      setNotice({ tone: 'info', text: `블록 ${n}개를 복사했습니다. 붙여넣기 버튼이나 Ctrl+V로 붙입니다.` })
     }
     return text
   }
@@ -318,7 +318,7 @@ export default function App() {
     const names = gone.slice(0, 3).join(', ') + (gone.length > 3 ? ` 외 ${gone.length - 3}개` : '')
     return {
       tone: 'warn',
-      text: `블록 ${n}개를 원래 자리에 되돌렸지만 연결은 ${total}개 중 ${r.restored}개만 복원했습니다. 이어질 블록이 지워짐: ${names}`,
+      text: `연결 ${total}개 중 ${r.restored}개만 복원했습니다. 지워진 블록: ${names}`,
     }
   }
   const paste = (text) => {
@@ -566,9 +566,12 @@ export default function App() {
               <Icon name="estop" size={20} />{estop ? '비상정지 중' : '비상정지'}
             </button>
           </header>
-          <EstopBanner on={estop} connected={connected} onRelease={() => setEstop(false)} />
-          <ConnectionBanner connected={connected} everConnected={everConnected} url={url} />
-          <Notice notice={notice} onClose={closeNotice} />
+          {/* 알림 영역: 좁은 화면에서 페이지를 내려도 위에 붙어 보이게 (app.css .alerts) */}
+          <div className="alerts">
+            <EstopBanner on={estop} connected={connected} onRelease={() => setEstop(false)} />
+            <ConnectionBanner connected={connected} everConnected={everConnected} url={url} />
+            <Notice notice={notice} onClose={closeNotice} />
+          </div>
           <main>
             <section className="workspace" id="workspace" tabIndex={-1} aria-label="워크플로">
               <div className="docbar">
