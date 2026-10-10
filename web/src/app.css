@@ -353,6 +353,9 @@ aside {
 }
 aside .viewer:not(.large) { flex: 0 1 300px; height: auto; min-height: 160px; }
 aside > .tabs { display: flex; flex: 1 0 240px; flex-direction: column; min-height: 0; }
+/* 트윈 보기에서 3D 자리에 들어가는 카메라: 3D 뷰처럼 남는 높이를 쓰고, 화면은 그 안에 맞춘다 */
+aside > .twin-camera { flex: 1 1 340px; min-height: 200px; padding: 10px 12px; border-bottom: 1px solid var(--border); }
+aside:has(> .twin-camera) > .tabs { flex-basis: 180px; } /* 트윈 보기는 지켜보는 화면이라 카메라에 높이를 더 준다 (탭 내용은 안에서 스크롤) */
 aside > .tabs > [role='tabpanel'] { flex: 1; min-height: 0; overflow-x: hidden; overflow-y: auto; overscroll-behavior: contain; }
 aside .table-wrap, aside /* 카메라 실시간 화면 */
 .camera-panel { display: grid; gap: 10px; }
@@ -745,6 +748,7 @@ aside:has(> .tabs #panel-camera:not([hidden])) > .tabs { flex-basis: 380px; }
   aside { overflow: visible; border-top: 1px solid var(--border); border-left: 0; }
   .viewer, aside .viewer:not(.large) { flex: none; height: 240px; }
   aside > .tabs, aside > .tabs > [role='tabpanel'] { flex: none; overflow: visible; }
+  aside > .twin-camera { flex: none; }
   .react-flow__panel.inspector-panel { top: auto; right: 0; bottom: 0; left: 0; max-height: 70%; margin: 8px; }
   .inspector { width: 100%; }
 }

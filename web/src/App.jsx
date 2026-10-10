@@ -666,7 +666,12 @@ export default function App() {
               )}
             </section>
             <aside aria-label="로봇">
-              {view === 'edit' && viewer}
+              {/* 편집 보기: 3D / 트윈 보기: 3D가 가운데 크게 → 이 칸에는 실제 카메라 (트윈과 실물을 나란히) */}
+              {view === 'edit' ? viewer : (
+                <section className="twin-camera" aria-label="카메라 실시간 화면">
+                  <CameraPanel id="twin-camera-view" connected={connected} defaultTopic={status.camera || ''} bare />
+                </section>
+              )}
               <Jog names={names} home={status.home} disabled={!connected || estop || (running && status.node !== 'jog')} />
               <Tabs tabs={[
                 { id: 'rec', label: <>녹화{episode.recording && <span className="tab-dot" aria-label="녹화 중" />}</>, content: <Episodes episode={episode} connected={connected} /> },

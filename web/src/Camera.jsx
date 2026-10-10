@@ -21,10 +21,10 @@ export function useImageTopics(connected) {
 }
 
 // value '' = 기본 카메라(로봇 프로파일 camera_topic)
-export function CameraSelect({ id, value, onChange, list, defaultTopic, onRefresh }) {
+export function CameraSelect({ id, value, onChange, list, defaultTopic, onRefresh, label }) {
   return (
     <div className="row">
-      <select id={id} name={id} value={value} onChange={(e) => onChange(e.target.value)} translate="no">
+      <select id={id} name={id} value={value} onChange={(e) => onChange(e.target.value)} translate="no" aria-label={label}>
         <option value="">{defaultTopic ? `기본: ${defaultTopic}` : '기본 카메라 없음 (프로파일 camera_topic)'}</option>
         {(list || []).filter((t) => t.name !== defaultTopic).map((t) => <option key={t.name} value={t.name}>{t.name}</option>)}
         {value && list && !list.some((t) => t.name === value) && <option value={value}>{value} (없음)</option>}
@@ -117,22 +117,26 @@ export function CameraView({ topic, list, compact }) {
   )
 }
 
-// 오른쪽 '카메라' 탭: 고른 카메라의 실시간 화면 (보기용, 블록 설정은 바꾸지 않음)
-export function CameraPanel({ connected, defaultTopic }) {
+// 고른 카메라의 실시간 화면 (보기용, 블록 설정은 바꾸지 않음). 오른쪽 '카메라' 탭과 트윈 보기의 오른쪽 위 칸에서 쓴다.
+// bare: 이름·도움말 줄 없이 카메라 선택만 (트윈 보기처럼 화면에 높이를 더 줄 때)
+export function CameraPanel({ id = 'camera-view', connected, defaultTopic, bare }) {
   const [list, refresh] = useImageTopics(connected)
   const [sel, setSel] = useState('')
+  const select = <CameraSelect id={id} value={sel} onChange={setSel} list={list} defaultTopic={defaultTopic} onRefresh={refresh} label={bare ? '카메라 선택' : undefined} />
   return (
     <div className="camera-panel">
       <h2 className="sr-only">카메라</h2>
-      <div className="field">
-        <div className="field-head">
-          <label className="field-label" htmlFor="camera-view">카메라</label>
-          <Hint label="카메라 설명">
-            AI 비전 판단 블록은 기본으로 로봇 프로파일의 camera_topic을 봅니다(블록마다 바꿀 수 있음). 여기서 고르는 것은 화면 보기용이라 블록 설정은 바뀌지 않습니다.
-          </Hint>
+      {bare ? select : (
+        <div className="field">
+          <div className="field-head">
+            <label className="field-label" htmlFor={id}>카메라</label>
+            <Hint label="카메라 설명">
+              AI 비전 판단 블록은 기본으로 로봇 프로파일의 camera_topic을 봅니다(블록마다 바꿀 수 있음). 여기서 고르는 것은 화면 보기용이라 블록 설정은 바뀌지 않습니다.
+            </Hint>
+          </div>
+          {select}
         </div>
-        <CameraSelect id="camera-view" value={sel} onChange={setSel} list={list} defaultTopic={defaultTopic} onRefresh={refresh} />
-      </div>
+      )}
       <CameraView topic={sel || defaultTopic} list={list} />
     </div>
   )

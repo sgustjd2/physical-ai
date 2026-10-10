@@ -80,7 +80,7 @@
   - [x] 압축 JPEG/PNG 10fps, 원본 Image 2fps(rgb8·bgr8·rgba8·bgra8·mono8), 보이는 동안만 구독, 프레임 변환 검사(`cameraFrames.test.js`)
   - [x] 모의 카메라(`ros/mock_camera.py`, 프로파일 `mock_camera: true`) + 스모크 테스트
 - [ ] 카메라를 에피소드 녹화·LeRobot 변환에 넣기 (`record_topics`, `dataset.cameras`) — 실제 카메라 정해지면
-- [ ] 트윈 보기에서 오른쪽에 카메라 화면 같이 보기 (3D와 나란히)
+- [x] 트윈 보기에서 오른쪽 위에 실제 카메라 화면 (가운데 3D 트윈과 나란히, 1280×800에서 355×198 · 1920×1080에서 355×366, 폰은 3D 아래)
 - [ ] 실제 Claude 호출 확인 (GB10 `.env`에 키 필요) — 판단 품질·지연 시간 측정
 - [ ] 인터넷 없는 현장용 로컬 VLM (GB10에서 vLLM/Ollama + Qwen-VL 등) — `ai_client.py`만 교체, 결정 필요
 - [ ] 비전 판단 결과를 에피소드에 같이 저장 (학습 데이터 라벨)
