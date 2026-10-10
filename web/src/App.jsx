@@ -284,18 +284,20 @@ export default function App() {
     setNodes((ns) => [...ns.map((x) => ({ ...x, selected: false })), copy])
   }
 
-  // 복사/붙여넣기 (clipboard.js). 복사한 글자는 앱 안에도 들고 있어 붙여넣기 버튼(터치 화면)에 쓴다
-  const clip = useRef({ text: null, pastes: 0 })
+  // 복사/붙여넣기 (clipboard.js). 복사한 글자는 앱 안에도 들고 있어 붙여넣기 버튼(터치 화면)에 쓴다.
+  // doc: 지금 열린 워크플로 번호 (새로 만들기·열기·불러오기마다 바뀜) — 잘라낸 블록을 같은 워크플로에 붙일 때 원래 자리로
+  const doc = useRef(0)
+  const clip = useRef({ text: null, pastes: 0, cut: false, doc: 0 })
   const [clipCount, setClipCount] = useState(0)
   const copyNodes = (cut = false) => {
     const text = copyText(nodes, edges)
     if (!text) return null
     const n = parseClip(text).nodes.length
-    clip.current = { text, pastes: 0 }
+    clip.current = { text, pastes: 0, cut, doc: doc.current }
     setClipCount(n)
     if (cut) {
       deleteElements({ nodes: nodes.filter((x) => x.selected && x.type !== 'start').map(({ id }) => ({ id })) })
-        .then(() => setNotice({ tone: 'info', text: `블록 ${n}개를 잘라냈습니다. Ctrl+V 또는 붙여넣기 버튼으로 붙여넣습니다.` }))
+        .then(() => setNotice({ tone: 'info', text: `블록 ${n}개를 잘라냈습니다. Ctrl+V 또는 붙여넣기 버튼으로 붙이면 이 워크플로에서는 원래 자리로 돌아갑니다.` }))
     } else {
       setNotice({ tone: 'info', text: `블록 ${n}개를 복사했습니다. Ctrl+V 또는 붙여넣기 버튼으로 붙여넣습니다 (다른 워크플로에도 가능).` })
     }
@@ -306,9 +308,12 @@ export default function App() {
     if (!c || !flowRef.current) return false
     let dx
     let dy
-    if (text === clip.current.text && c.nodes.every((n) => byId.has(n.id))) {
+    const mine = text === clip.current.text
+    if (mine && c.nodes.every((n) => byId.has(n.id))) {
       clip.current.pastes += 1
-      dx = dy = 40 * clip.current.pastes // 같은 워크플로: 원본 옆에 계단식으로
+      dx = dy = 40 * clip.current.pastes // 원본이 아직 있음: 원본 옆에 계단식으로
+    } else if (mine && clip.current.cut && clip.current.doc === doc.current) {
+      dx = dy = 40 * clip.current.pastes++ // 같은 워크플로에서 잘라낸 블록: 처음엔 원래 자리, 또 붙이면 그 옆으로
     } else {
       // 다른 워크플로·다른 탭에서 온 블록: 지금 보이는 화면 가운데로
       const r = flowRef.current.getBoundingClientRect()
@@ -419,6 +424,7 @@ export default function App() {
 
   // 덮어쓰는 동작은 확인 창 대신 되돌리기로 보호
   const replace = (next, nextName, text, snap = null) => {
+    doc.current += 1
     const prev = { nodes, edges, name, savedSnap }
     const g = withPositions(next)
     setNodes(g.nodes)
