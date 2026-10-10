@@ -1,0 +1,3 @@
+# LeRobot 데이터셋 변환 (torch는 Dockerfile에서 CPU 빌드로 먼저 설치)
+lerobot==0.4.4
+mcap-ros2-support==0.5.7

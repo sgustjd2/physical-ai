@@ -151,6 +151,22 @@ data/episodes/20261010-141316-372_빨간_블록_집기/
 녹화기는 대상 토픽 구독이 실제로 시작된 뒤에 "녹화 중"으로 응답하므로 시작 직후 동작도 빠지지 않습니다.
 전원 차단 등으로 마무리 못 한 에피소드는 다음 기동 때 `result: interrupted`로 표시됩니다 (`ros2 bag reindex`로 bag 복구 가능).
 
+## LeRobot 데이터셋 변환
+
+녹화한 에피소드를 [LeRobot](https://github.com/huggingface/lerobot) Dataset v3로 바꿉니다 (SmolVLA·ACT 등 학습 입력).
+
+```bash
+docker compose run --rm ai python convert_lerobot.py /data/episodes --out /data/lerobot/pick_v1
+```
+
+- 기본은 `result: success`인 에피소드만 쓰고, 작업 설명(지시문)이 없는 에피소드는 건너뜁니다 (`--result success fail`로 바꿀 수 있음).
+- 로봇별 매핑은 `robots/<이름>/robot.yaml`의 `dataset` 섹션에 둡니다: 관절(그리퍼 포함 가능), 카메라 이름 ↔ 토픽, action 정의.
+  - `action: next_state`: 다음 프레임의 관절값 (리더 팔 없이 조그·워크플로로 녹화할 때)
+  - `action: /leader/joint_states`: 리더-팔로워 텔레옵이면 리더 팔 토픽
+- 프레임은 `fps` 간격으로 리샘플링합니다 (각 시각 직전의 최신 메시지). 카메라는 `sensor_msgs/Image`(rgb8·bgr8·mono8 등)와 `CompressedImage`를 지원합니다.
+- ROS 설치 없이 동작합니다 (mcap 파일에 메시지 정의가 들어 있음). 결과 폴더의 `conversion.json`에 어떤 녹화에서 어떤 설정으로 만들었는지 남습니다.
+- 확인: `LeRobotDataset('local/pick_v1', root='data/lerobot/pick_v1')`
+
 ## 워크플로 노드 (기본 제공)
 
 | 분류 | 노드 | 하는 일 | 시뮬레이션 실행에서 |

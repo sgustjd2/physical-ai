@@ -61,12 +61,12 @@
 
 ## Phase 3 — Physical AI 데이터 루프 (수집 → 학습 → 실행)
 참고: 패스트캠퍼스 "Physical AI 로봇 제어 올인원" 커리큘럼 (Isaac Sim → ROS2 텔레옵 → 데이터 수집 → LeRobot/SmolVLA)
-- [ ] rosbag → LeRobot Dataset v3 변환 (`ai/convert_lerobot.py`)
-  - [ ] 로봇 프로파일 `dataset` 섹션: 관절, 카메라 매핑, action 정의 (next_state | 토픽)
-  - [ ] ROS 없이 mcap 직접 읽기 (mcap-ros2-support), fps 리샘플링(직전값 유지), 카메라 Image/CompressedImage
-  - [ ] 결과 필터(기본 success), 출처 기록(conversion.json)
-  - [ ] 테스트: 합성 bag(관절+카메라) 변환 → LeRobotDataset 로드 검증, 실제 녹화 bag 변환 (CI)
-  - [ ] `ai/` Docker 이미지 + compose `tools` 프로파일, README
+- [x] rosbag → LeRobot Dataset v3 변환 (`ai/convert_lerobot.py`)
+  - [x] 로봇 프로파일 `dataset` 섹션: 관절, 카메라 매핑, action 정의 (next_state | 토픽)
+  - [x] ROS 없이 mcap 직접 읽기 (mcap-ros2-support), fps 리샘플링(직전값 유지), 카메라 Image/CompressedImage
+  - [x] 결과 필터(기본 success), 출처 기록(conversion.json)
+  - [x] 테스트: 합성 bag(관절+카메라) 변환 → LeRobotDataset 로드 검증, 실제 녹화 bag 변환 (CI)
+  - [x] `ai/` Docker 이미지 + compose `tools` 프로파일, README
 - [ ] Replayer로 관측·행동 검증
 - [ ] Rerun으로 에피소드 시간축 확인 (웹에 Rerun 뷰어 임베드)
 - [ ] 리더-팔로워 텔레옵 (리더 팔로 시연 → 팔로워/실제 팔) — 데모 수집 입력 장치

@@ -18,6 +18,16 @@ services:
     stop_grace_period: 30s
     restart: unless-stopped
 
+  # 도구: 'docker compose up'에는 안 뜨고 필요할 때만 실행
+  #   docker compose run --rm ai python convert_lerobot.py /data/episodes --out /data/lerobot/<이름>
+  ai:
+    build: ./ai
+    profiles: [tools]
+    volumes:
+      - ./ai:/ai
+      - ./robots:/robots
+      - ./data:/data
+
   web:
     build: ./web
     ports: ["8080:80"]
