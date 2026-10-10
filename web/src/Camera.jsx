@@ -1,13 +1,32 @@
 // 카메라: 실시간 화면 + 연결 상태. AI 비전 판단이 무엇을 보는지 사람이 같이 보도록.
 // 이미지 토픽을 rosbridge로 받아 캔버스에 그린다. 압축(JPEG/PNG)은 10fps, 원본 Image는 무거워서 2fps로 받는다.
+// 같은 카메라를 여러 화면이 보면 구독·디코딩은 한 번만 하고 나눠 그린다 (createFeeds)
 import { useEffect, useRef, useState } from 'react'
 import { Topic } from 'roslib'
-import { fromBase64, isImageType, rawToRgba } from './cameraFrames'
+import { createFeeds, fromBase64, isImageType, rawToRgba } from './cameraFrames'
 import { Hint } from './Hint'
 import { Icon } from './icons'
 import { ros } from './ros'
 
 const STALE = 3000 // 이만큼 프레임이 없으면 '신호 없음'
+
+const feeds = createFeeds(
+  (name, type, onMessage) => {
+    const t = new Topic({ ros, name, messageType: type, throttle_rate: type.endsWith('CompressedImage') ? 100 : 500, queue_length: 1 })
+    t.subscribe(onMessage)
+    return () => t.unsubscribe(onMessage)
+  },
+  async (m, type) => {
+    if (type.endsWith('CompressedImage')) {
+      const png = m.format?.includes('png')
+      const image = await createImageBitmap(new Blob([fromBase64(m.data)], { type: png ? 'image/png' : 'image/jpeg' }))
+      return { image, width: image.width, height: image.height, info: `${image.width}×${image.height} · ${png ? 'PNG' : 'JPEG'}` }
+    }
+    const px = rawToRgba(m)
+    if (!px) throw new Error(`지원하지 않는 인코딩 ${m.encoding}`)
+    return { image: new ImageData(px, m.width, m.height), width: m.width, height: m.height, info: `${m.width}×${m.height} · 원본 ${m.encoding}` }
+  },
+)
 
 // ROS 네트워크의 이미지 토픽 목록. null = 아직 모름 (연결 전)
 export function useImageTopics(connected) {
@@ -53,56 +72,26 @@ export function CameraView({ topic, list, compact }) {
   useEffect(() => {
     setSt({ state: 'wait' })
     if (!topic || !type) return
-    const compressed = type.endsWith('CompressedImage')
-    const t = new Topic({ ros, name: topic, messageType: type, throttle_rate: compressed ? 100 : 500, queue_length: 1 })
-    let frames = 0
-    let last = 0
-    let info = ''
-    let err = ''
-    let busy = 0 // 그리기 시작 시각 (0 = 쉬는 중)
-    const fit = (c, w, h) => { if (c.width !== w || c.height !== h) { c.width = w; c.height = h } }
-    const draw = async (m) => {
+    const draw = ({ image, width, height }) => {
       const c = canvas.current
-      // 이전 프레임을 그리는 중이면 건너뜀. 디코딩이 2초 넘게 안 끝나면(백그라운드 탭 등) 묶여 있지 않게 새 프레임을 받는다
-      if (!c || (busy && performance.now() - busy < 2000)) return
-      busy = performance.now()
-      try {
-        if (compressed) {
-          const png = m.format?.includes('png')
-          const bmp = await createImageBitmap(new Blob([fromBase64(m.data)], { type: png ? 'image/png' : 'image/jpeg' }))
-          fit(c, bmp.width, bmp.height)
-          c.getContext('2d').drawImage(bmp, 0, 0)
-          info = `${bmp.width}×${bmp.height} · ${png ? 'PNG' : 'JPEG'}`
-          bmp.close()
-        } else {
-          const px = rawToRgba(m)
-          if (!px) throw new Error(`지원하지 않는 인코딩 ${m.encoding}`)
-          fit(c, m.width, m.height)
-          c.getContext('2d').putImageData(new ImageData(px, m.width, m.height), 0, 0)
-          info = `${m.width}×${m.height} · 원본 ${m.encoding}`
-        }
-        frames += 1
-        last = performance.now()
-        err = ''
-      } catch (e) {
-        err = `화면을 그리지 못함: ${e.message}`
-      } finally {
-        busy = 0
-      }
+      if (!c) return
+      if (c.width !== width || c.height !== height) { c.width = width; c.height = height }
+      const g = c.getContext('2d')
+      if (image instanceof ImageData) g.putImageData(image, 0, 0)
+      else g.drawImage(image, 0, 0)
     }
-    t.subscribe(draw)
-    const start = performance.now()
-    let prev = { frames: 0, at: start }
-    // 상태는 1초에 한 번만 갱신 (프레임마다 다시 그리지 않게)
+    const { feed, leave } = feeds.join(topic, type, draw)
+    let prev = { frames: feed.frames, at: performance.now() }
+    // 상태는 1초에 한 번만 갱신 (프레임마다 다시 그리지 않게). 통계는 같은 카메라를 보는 화면끼리 공유
     const tick = setInterval(() => {
       const now = performance.now()
-      const fps = ((frames - prev.frames) * 1000) / (now - prev.at)
-      prev = { frames, at: now }
-      if (err) setSt({ state: 'error', msg: err })
-      else if (now - (last || start) > STALE) setSt({ state: 'stale' })
-      else if (last) setSt({ state: 'live', text: `연결됨 · ${fps.toFixed(1)}fps · ${info}` })
+      const fps = ((feed.frames - prev.frames) * 1000) / (now - prev.at)
+      prev = { frames: feed.frames, at: now }
+      if (feed.err) setSt({ state: 'error', msg: `화면을 그리지 못함: ${feed.err}` })
+      else if (now - (feed.last || feed.started) > STALE) setSt({ state: 'stale' })
+      else if (feed.last) setSt({ state: 'live', text: `연결됨 · ${fps.toFixed(1)}fps · ${feed.info}` })
     }, 1000)
-    return () => { t.unsubscribe(draw); clearInterval(tick) }
+    return () => { leave(); clearInterval(tick) }
   }, [topic, type])
 
   const text = state === 'live' ? st.text : state === 'error' ? st.msg : STATUS[state]()

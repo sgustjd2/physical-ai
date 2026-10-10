@@ -33,3 +33,48 @@ export function rawToRgba({ width, height, step, encoding, data }) {
   }
   return out
 }
+
+// 같은 카메라를 여러 화면(카메라 탭·트윈 보기·블록 미리보기)이 볼 때 구독·디코딩은 한 번만 하고, 디코딩한 프레임을 모든 화면에 그린다.
+// open(name, type, onMessage) → close(): 실제 구독 (Camera.jsx는 roslib Topic)
+// decode(msg, type) → Promise<{ image, width, height, info }>: image는 ImageBitmap(close 가능) 또는 ImageData
+// 디코딩이 끝나기 전에 온 프레임은 건너뛴다. 2초 넘게 안 끝나면(백그라운드 탭 등) 묶여 있지 않게 다음 프레임을 받는다
+export function createFeeds(open, decode, now = () => performance.now()) {
+  const feeds = new Map()
+  const start = (name, type) => {
+    const f = { views: new Set(), frames: 0, last: 0, info: '', err: '', busy: 0, started: now() }
+    f.close = open(name, type, async (m) => {
+      if (f.busy && now() - f.busy < 2000) return
+      f.busy = now()
+      try {
+        const frame = await decode(m, type)
+        for (const draw of f.views) draw(frame)
+        frame.image.close?.()
+        f.frames += 1
+        f.last = now()
+        f.info = frame.info
+        f.err = ''
+      } catch (e) {
+        f.err = e.message
+      } finally {
+        f.busy = 0
+      }
+    })
+    feeds.set(name, f)
+    return f
+  }
+  return {
+    // 화면 하나가 카메라를 보기 시작 → { feed(통계: frames, last, info, err, started), leave() }
+    join(name, type, draw) {
+      const f = feeds.get(name) ?? start(name, type)
+      f.views.add(draw)
+      return {
+        feed: f,
+        leave() {
+          f.views.delete(draw)
+          if (!f.views.size && feeds.get(name) === f) { f.close(); feeds.delete(name) }
+        },
+      }
+    },
+    count: () => feeds.size,
+  }
+}
