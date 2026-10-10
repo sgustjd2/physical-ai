@@ -1,0 +1,18 @@
+# GB10(DGX OS, arm64)에서:  docker compose up -d --build   →  http://<GB10 IP>:8080
+services:
+  ros:
+    build: ./ros
+    # DDS(ROS2 통신)가 같은 네트워크의 실제 로봇/다른 PC와 통하려면 host 네트워크가 필요. rosbridge는 :9090
+    network_mode: host
+    ipc: host
+    volumes: ["./ros:/ros"]
+    environment:
+      - ROS_DOMAIN_ID=${ROS_DOMAIN_ID:-0}
+    # 실제 팔: .env 에 LAUNCH_ARGS=mock:=false trajectory_action:=/... joints:=[a,b,c]  (리스트 안에 공백 없이)
+    command: bash -c "ros2 launch /ros/bringup.launch.py ${LAUNCH_ARGS:-}"
+    restart: unless-stopped
+
+  web:
+    build: ./web
+    ports: ["8080:80"]
+    restart: unless-stopped

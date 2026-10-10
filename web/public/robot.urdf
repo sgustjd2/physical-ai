@@ -1,0 +1,70 @@
+<?xml version="1.0"?>
+<!-- 개발용 6축 팔 (기본 도형만 사용, 메시 없음). 실제 팔은 제조사 URDF로 교체. 조인트 이름은 실행기 joints 파라미터와 같아야 함 -->
+<robot name="demo_arm">
+  <material name="dark"><color rgba="0.20 0.22 0.25 1"/></material>
+  <material name="light"><color rgba="0.82 0.84 0.87 1"/></material>
+  <material name="accent"><color rgba="0.24 0.55 0.99 1"/></material>
+
+  <link name="base_link">
+    <visual><origin xyz="0 0 0.05"/><geometry><cylinder radius="0.09" length="0.1"/></geometry><material name="dark"/></visual>
+  </link>
+
+  <joint name="joint1" type="revolute">
+    <parent link="base_link"/><child link="link1"/>
+    <origin xyz="0 0 0.1"/><axis xyz="0 0 1"/>
+    <limit lower="-3.1416" upper="3.1416" effort="100" velocity="3.14"/>
+  </joint>
+  <link name="link1">
+    <visual><origin xyz="0 0 0.06"/><geometry><cylinder radius="0.065" length="0.12"/></geometry><material name="light"/></visual>
+  </link>
+
+  <joint name="joint2" type="revolute">
+    <parent link="link1"/><child link="link2"/>
+    <origin xyz="0 0 0.12"/><axis xyz="0 1 0"/>
+    <limit lower="-3.1416" upper="3.1416" effort="100" velocity="3.14"/>
+  </joint>
+  <link name="link2">
+    <visual><origin rpy="1.5708 0 0"/><geometry><cylinder radius="0.06" length="0.13"/></geometry><material name="accent"/></visual>
+    <visual><origin xyz="0 0 0.2"/><geometry><box size="0.08 0.08 0.4"/></geometry><material name="light"/></visual>
+  </link>
+
+  <joint name="joint3" type="revolute">
+    <parent link="link2"/><child link="link3"/>
+    <origin xyz="0 0 0.4"/><axis xyz="0 1 0"/>
+    <limit lower="-3.1416" upper="3.1416" effort="100" velocity="3.14"/>
+  </joint>
+  <link name="link3">
+    <visual><origin rpy="1.5708 0 0"/><geometry><cylinder radius="0.05" length="0.11"/></geometry><material name="accent"/></visual>
+    <visual><origin xyz="0 0 0.17"/><geometry><box size="0.07 0.07 0.34"/></geometry><material name="light"/></visual>
+  </link>
+
+  <joint name="joint4" type="revolute">
+    <parent link="link3"/><child link="link4"/>
+    <origin xyz="0 0 0.34"/><axis xyz="0 0 1"/>
+    <limit lower="-3.1416" upper="3.1416" effort="100" velocity="3.14"/>
+  </joint>
+  <link name="link4">
+    <visual><origin xyz="0 0 0.04"/><geometry><cylinder radius="0.04" length="0.08"/></geometry><material name="light"/></visual>
+  </link>
+
+  <joint name="joint5" type="revolute">
+    <parent link="link4"/><child link="link5"/>
+    <origin xyz="0 0 0.08"/><axis xyz="0 1 0"/>
+    <limit lower="-3.1416" upper="3.1416" effort="100" velocity="3.14"/>
+  </joint>
+  <link name="link5">
+    <visual><origin rpy="1.5708 0 0"/><geometry><cylinder radius="0.04" length="0.09"/></geometry><material name="accent"/></visual>
+  </link>
+
+  <joint name="joint6" type="revolute">
+    <parent link="link5"/><child link="link6"/>
+    <origin xyz="0 0 0.04"/><axis xyz="0 0 1"/>
+    <limit lower="-3.1416" upper="3.1416" effort="100" velocity="3.14"/>
+  </joint>
+  <link name="link6">
+    <visual><origin xyz="0 0 0.015"/><geometry><cylinder radius="0.035" length="0.03"/></geometry><material name="dark"/></visual>
+    <visual><origin xyz="0 0 0.045"/><geometry><box size="0.03 0.08 0.03"/></geometry><material name="dark"/></visual>
+    <visual><origin xyz="0 0.03 0.085"/><geometry><box size="0.015 0.012 0.05"/></geometry><material name="dark"/></visual>
+    <visual><origin xyz="0 -0.03 0.085"/><geometry><box size="0.015 0.012 0.05"/></geometry><material name="dark"/></visual>
+  </link>
+</robot>
