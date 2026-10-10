@@ -47,12 +47,15 @@ const stopTopic = topic('/workflow/stop', 'std_msgs/msg/Empty')
 const episodeCmd = json('/episode/cmd')
 const libraryCmd = json('/workflow/library/cmd')
 const generateCmd = json('/workflow/generate/cmd')
+const estopTopic = topic('/workflow/estop', 'std_msgs/msg/Bool')
 // 미리 advertise 해둔다: 처음 만든 퍼블리셔로 바로 보내면 디스커버리 전에 메시지가 사라질 수 있음
-for (const t of [runTopic, stopTopic, episodeCmd, libraryCmd, generateCmd]) t.advertise()
+for (const t of [runTopic, stopTopic, episodeCmd, libraryCmd, generateCmd, estopTopic]) t.advertise()
 
 // mode: 'real' = 실제 로봇, 'sim' = 디지털 트윈에서만 (실제 팔·장비는 그대로)
 export const runWorkflow = (graph, mode = 'real') => runTopic.publish({ data: JSON.stringify({ ...graph, mode }) })
 export const stopWorkflow = () => stopTopic.publish({})
+// 소프트웨어 비상정지 (잠금). 실행기가 해제 전까지 모든 실행을 거부한다. 하드웨어 비상정지를 대신하지 않음
+export const setEstop = (on) => estopTopic.publish({ data: on })
 // crypto.randomUUID는 http(비보안) 접속에선 없으므로 Math.random
 const cmdId = () => Math.random().toString(36).slice(2, 10)
 export const sendEpisode = (op, extra = {}) => episodeCmd.publish({ data: JSON.stringify({ op, id: cmdId(), ...extra }) })
@@ -69,6 +72,12 @@ export const sendLibrary = (op, extra = {}) => {
 
 // 실행기 조인트 순서대로 현재 각도(deg)
 export const currentDeg = (names) => names.map((n) => +((latest.joints[n] ?? 0) * 180 / Math.PI).toFixed(1))
+
+// 홈 이동: 로봇 프로파일의 home 자세로 (id는 편집 중인 노드와 겹치지 않게)
+export const moveHome = (duration = 3) => runWorkflow({
+  nodes: [{ id: 'start', type: 'start' }, { id: '__home', type: 'move_home', data: { duration } }],
+  edges: [{ source: 'start', target: '__home' }],
+})
 
 // 단일 MoveJ 워크플로 = 조그
 export const moveTo = (deg, duration = 0.5) => runWorkflow({

@@ -9,7 +9,7 @@
     ICON = 'device'       # 분류 아이콘: arm | flow | device | data | vision (없으면 점)
     ORDER = 3             # 팔레트에서 분류가 놓이는 순서 (작을수록 위)
 
-    @node('beep', '비프', fields=[field('count', '횟수', 'number', 1)])
+    @node('beep', '비프', desc='부저를 N번 울립니다', fields=[field('count', '횟수', 'number', 1)])
     def beep(ctx, d):
         if ctx.sim:                      # 시뮬레이션 실행: 실제 장비는 건드리지 않는다
             return
@@ -67,8 +67,9 @@ def field(key, label, kind='text', default='', options=None, advanced=False):
     return f
 
 
-def node(type_, label, fields=(), outputs=DEFAULT_OUTPUTS, advanced=False):
-    """advanced=True 면 웹 팔레트의 '고급' 영역에 접혀 들어간다 (ROS 토픽을 직접 다루는 노드 등)."""
+def node(type_, label, fields=(), outputs=DEFAULT_OUTPUTS, advanced=False, desc=''):
+    """desc: 블록 선택 창에 보이는 한 줄 설명 (비개발자가 무엇을 하는 블록인지 알 수 있게).
+    advanced=True 면 블록 선택 창의 '고급' 영역에 접혀 들어간다 (ROS 토픽을 직접 다루는 노드 등)."""
     def deco(fn):
         if type_ in REGISTRY:
             raise ValueError(f'노드 타입 중복: {type_}')
@@ -76,7 +77,7 @@ def node(type_, label, fields=(), outputs=DEFAULT_OUTPUTS, advanced=False):
         REGISTRY[type_] = {'run': fn, 'spec': {
             'type': type_, 'label': label, 'fields': list(fields),
             'group': getattr(mod, 'GROUP', '기타'), 'icon': getattr(mod, 'ICON', ''), 'order': getattr(mod, 'ORDER', 100),
-            'outputs': [{'id': i, 'label': lb} for i, lb in outputs], 'advanced': advanced,
+            'outputs': [{'id': i, 'label': lb} for i, lb in outputs], 'advanced': advanced, 'desc': desc,
         }}
         return fn
     return deco

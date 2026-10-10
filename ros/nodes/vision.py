@@ -64,7 +64,7 @@ def raw_to_jpeg(m):
     return buf.getvalue()
 
 
-@node('vlm_check', 'AI 비전 판단', fields=[
+@node('vlm_check', 'AI 비전 판단', desc='카메라 영상을 보고 AI가 질문에 예/아니오로 답합니다', fields=[
     field('question', '질문 (예/아니오로 답할 수 있게)', 'text', '작업대 위에 부품이 있나요?'),
     field('camera', '카메라 토픽 (비우면 프로파일 값)', 'text', '', advanced=True),
     field('timeout', '이미지 대기 (s)', 'number', 3, advanced=True),

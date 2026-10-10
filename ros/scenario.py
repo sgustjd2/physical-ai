@@ -58,7 +58,8 @@ def describe(specs, joints):
             extra = f' 선택지={"/".join(f["options"])}' if f.get('options') else ''
             fields.append(f'{f["key"]}({f["kind"]}{extra}, 기본값={f["default"]!r}): {f["label"]}')
         outs = ', '.join(f'{o["id"]}' + (f'({o["label"]})' if o['label'] else '') for o in s['outputs'])
-        lines.append(f'- {s["type"]} ({s["label"]}, 분류: {s["group"]}{", 고급" if s.get("advanced") else ""})'
+        desc = f' — {s["desc"]}' if s.get('desc') else ''
+        lines.append(f'- {s["type"]} ({s["label"]}, 분류: {s["group"]}{", 고급" if s.get("advanced") else ""}){desc}'
                      f'\n    필드: {"; ".join(fields) or "없음"}\n    출력: {outs}')
     return '\n'.join(lines)
 

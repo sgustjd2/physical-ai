@@ -24,13 +24,23 @@ def setup(ctx):
     ctx.sim_cmd_pub = ctx.create_publisher(JointTrajectory, '/sim/workflow/command', 10)
 
 
-@node('move_j', 'MoveJ 관절 이동', fields=[
+@node('move_j', 'MoveJ 관절 이동', desc='티칭한 자세(관절 각도)로 팔을 움직입니다', fields=[
     field('joints', '관절 각도 (°)', 'joints'),
     field('duration', '이동 시간 (s)', 'number', 2),
 ])
 def move_j(ctx, d):
-    positions = [math.radians(float(v)) for v in d['joints']]
-    duration = float(d.get('duration') or 2)
+    move(ctx, d['joints'], float(d.get('duration') or 2))
+
+
+@node('move_home', '홈 위치로 이동', desc='로봇 프로파일에 정한 홈 자세로 돌아갑니다', fields=[
+    field('duration', '이동 시간 (s)', 'number', 3),
+])
+def move_home(ctx, d):
+    move(ctx, ctx.home, float(d.get('duration') or 3))
+
+
+def move(ctx, degrees, duration):
+    positions = [math.radians(float(v)) for v in degrees]
     if len(positions) != len(ctx.joints):
         raise ValueError(f'조인트 값 {len(positions)}개, 필요 {len(ctx.joints)}개')
     # 시뮬레이션 실행이면 실제 팔은 그대로 두고 트윈 팔만 움직인다
@@ -44,7 +54,12 @@ def move_j(ctx, d):
     pub.publish(traj)
 
     future = arm.send_goal_async(FollowJointTrajectory.Goal(trajectory=traj))
-    ctx.wait_until(future.done)
+    try:
+        ctx.wait_until(future.done)
+    except Exception:
+        # 수락 응답 전에 정지되면, 나중에 수락되는 즉시 취소 (그냥 두면 목표가 끝까지 실행됨)
+        future.add_done_callback(lambda f: f.result().accepted and f.result().cancel_goal_async())
+        raise
     handle = future.result()
     if not handle.accepted:
         raise RuntimeError('로봇팔이 목표를 거부함')

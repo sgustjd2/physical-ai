@@ -37,7 +37,7 @@ def msg_class(type_name):
     return get_message('/'.join([parts[0], 'msg', parts[1]]) if len(parts) == 2 else type_name)
 
 
-@node('gripper', '그리퍼', fields=[
+@node('gripper', '그리퍼', desc='그리퍼를 열거나 닫습니다', fields=[
     field('action', '동작', 'select', '닫기', options=['닫기', '열기']),
     field('settle', '동작 후 대기 (s)', 'number', 0.5, advanced=True),
 ])
@@ -48,7 +48,7 @@ def gripper(ctx, d):
     ctx.sleep(float(d.get('settle') or 0))
 
 
-@node('wait_topic', '신호 대기', advanced=True, fields=[
+@node('wait_topic', '신호 대기', advanced=True, desc='ROS 토픽 값이 조건을 만족할 때까지 기다립니다', fields=[
     field('topic', '토픽', 'text', '/sensor/ready'),
     field('op', '조건', 'select', '==', options=list(OPS)),
     field('value', '값', 'text', 'true'),
@@ -67,7 +67,7 @@ def wait_topic(ctx, d):
                  lambda m: op(get_field(m, d.get('field', '')), want), float(d.get('timeout') or 0))
 
 
-@node('publish', '토픽 발행', advanced=True, fields=[
+@node('publish', '토픽 발행', advanced=True, desc='ROS 토픽으로 메시지를 보냅니다 (PLC·장비 신호)', fields=[
     field('topic', '토픽', 'text', '/gripper/cmd'),
     field('type', '메시지 타입', 'text', 'std_msgs/msg/Bool'),
     field('data', '내용 (JSON)', 'json', '{"data": true}'),

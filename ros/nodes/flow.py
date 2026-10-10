@@ -7,12 +7,12 @@ ICON = 'flow'
 ORDER = 2
 
 
-@node('wait', '대기', fields=[field('sec', '시간 (s)', 'number', 1)])
+@node('wait', '대기', desc='정해진 시간만큼 기다립니다', fields=[field('sec', '시간 (s)', 'number', 1)])
 def wait(ctx, d):
     ctx.sleep(float(d['sec']))
 
 
-@node('if', '조건 분기', fields=[
+@node('if', '조건 분기', desc='센서 신호 값을 보고 예/아니오로 갈라집니다', fields=[
     field('topic', '확인할 신호 (토픽)', 'text', '/sensor/part_present'),
     field('op', '조건', 'select', '==', options=list(OPS)),
     field('value', '값', 'text', 'true'),
@@ -32,7 +32,7 @@ def if_(ctx, d):
     return 'yes' if OPS[d.get('op', '==')](get_field(m, d.get('field', '')), parse_value(d.get('value'))) else 'no'
 
 
-@node('loop', '반복', fields=[field('count', '반복 횟수', 'number', 3)],
+@node('loop', '반복', desc='연결한 단계들을 N번 되풀이한 뒤 완료로 넘어갑니다', fields=[field('count', '반복 횟수', 'number', 3)],
       outputs=[('repeat', '반복'), ('done', '완료')])
 def loop(ctx, d):
     """'반복' 쪽으로 N번 보낸 뒤 '완료' 쪽으로 보낸다. 반복할 단계들의 끝을 이 노드로 다시 연결한다."""
@@ -45,6 +45,6 @@ def loop(ctx, d):
     return 'done'
 
 
-@node('join', '합류')
+@node('join', '합류', desc='동시에 실행한 갈래가 모두 끝나면 다음으로 진행합니다')
 def join(ctx, d):
     """병렬 갈래가 모두 도착하면 한 번 진행한다. 도착 수는 실행기가 세므로 이 함수는 호출되지 않는다."""

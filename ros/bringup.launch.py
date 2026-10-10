@@ -38,9 +38,11 @@ def setup(context):
     cfg = yaml.safe_load(profile.read_text(encoding='utf-8'))
 
     executor = {'joints': cfg['joints'], 'trajectory_action': cfg['trajectory_action']}
-    for key in ('gripper_topic', 'camera_topic'):  # 선택 항목: 프로파일에 있으면 실행기에 전달
+    for key in ('gripper_topic', 'camera_topic', 'estop_topic'):  # 선택 항목: 프로파일에 있으면 실행기에 전달
         if cfg.get(key):
             executor[key] = cfg[key]
+    if cfg.get('home'):
+        executor['home'] = [float(v) for v in cfg['home']]  # double 배열로 넘겨야 파라미터 타입이 맞음
     actions = [
         script('workflow_executor.py', **executor),
         script('workflow_store.py'),

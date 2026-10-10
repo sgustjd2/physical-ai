@@ -2,7 +2,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { Hint } from './Hint'
 import { Icon } from './icons'
-import { currentDeg, moveTo, ros, sendEpisode, topic } from './ros'
+import { currentDeg, moveHome, moveTo, ros, sendEpisode, topic } from './ros'
 
 const RESULT = {
   success: '성공', fail: '실패', stopped: '정지', error: '오류', done: '종료', interrupted: '중단',
@@ -23,7 +23,7 @@ export const elapsed = (iso) => {
   return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`
 }
 
-export function Jog({ names, disabled }) {
+export function Jog({ names, home, disabled }) {
   const [step, setStep] = useState(5)
   useTick(100) // 표시값 10Hz 갱신
   const deg = currentDeg(names)
@@ -32,6 +32,10 @@ export function Jog({ names, disabled }) {
     <section className="panel" aria-labelledby="jog-title">
       <div className="panel-head">
         <h2 id="jog-title">조그</h2>
+        <button className="home-btn" onClick={() => moveHome()} disabled={disabled || !names.length}
+          title={`실제 로봇을 홈 자세로 이동 (${(home || []).join(', ')}°, 로봇 프로파일의 home)`}>
+          <Icon name="home" />홈으로
+        </button>
         <div className="segmented" role="radiogroup" aria-label="조그 간격">
           {[1, 5, 10, 30].map((s) => (
             <button key={s} role="radio" aria-checked={step === s} onClick={() => setStep(s)}>{s}°</button>

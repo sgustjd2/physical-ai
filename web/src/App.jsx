@@ -3,28 +3,27 @@ import {
   addEdge, Background, Controls, MarkerType, Panel, ReactFlow, useEdgesState, useNodesState, useReactFlow,
 } from '@xyflow/react'
 import { AIBuilder } from './AIBuilder'
+import { anchorOf, BlockPicker } from './BlockPicker'
 import { Hint } from './Hint'
 import { Icon } from './icons'
 import { LibraryMenu } from './Library'
 import {
-  episodeTopic, generateTopic, libraryTopic, logTopic, nodeTypesTopic, ros, runWorkflow, sendLibrary, statusTopic, stopWorkflow, url,
+  episodeTopic, generateTopic, libraryTopic, logTopic, nodeTypesTopic, ros, runWorkflow, sendLibrary, setEstop, statusTopic, stopWorkflow, url,
 } from './ros'
-import { CATEGORY_COLORS, defaults, FlowNode, Inspector, JointNames, outputsOf, Specs, START } from './nodes'
+import { CATEGORY_COLORS, defaults, FlowEdge, FlowNode, Inspector, JointNames, NodeActions, outputsOf, Specs, START } from './nodes'
 import { elapsed, Episodes, Jog, Logs, Tabs, Topics, useTick } from './Panels'
-import { ConnectionBanner, HealthBar, Notice, RobotMode, RunStatus, StepStrip } from './Status'
+import { ConnectionBanner, EstopBanner, HealthBar, Notice, RobotMode, RunStatus, StepStrip } from './Status'
 import Viewer from './Viewer'
 
 const NODE_W = 220
 const GAP = 40
 const COL_GAP = 48
 const DEFAULT_NAME = '새 워크플로'
-// 그래프를 화면에 맞출 때 떠 있는 팔레트(넓은 화면: 왼쪽, 좁은 화면: 위쪽)를 피한다
-const FIT = {
-  maxZoom: 1,
-  padding: matchMedia('(min-width: 900px)').matches
-    ? { top: '24px', right: '24px', bottom: '24px', left: '248px' }
-    : { top: '64px', right: '16px', bottom: '24px', left: '16px' },
-}
+// 그래프를 화면에 맞출 때 왼쪽 위 '블록 추가' 버튼을 피한다
+const FIT = { maxZoom: 1, padding: { top: '64px', right: '24px', bottom: '24px', left: '24px' } }
+const EDGE_TYPES = { flow: FlowEdge }
+const EDGE_DEFAULTS = { type: 'flow', markerEnd: { type: MarkerType.ArrowClosed } }
+const link = (source, port, target) => ({ id: `${source}-${port}-${target}`, source, target, ...(port !== 'out' ? { sourceHandle: port } : {}) })
 
 const move = (id, y, joints) => ({ id, type: 'move_j', position: { x: 0, y }, data: { joints, duration: 2 } })
 const START_NODE = { id: 'n0', type: 'start', position: { x: 70, y: 0 }, data: {} }
@@ -108,53 +107,6 @@ function RecChip({ episode }) {
   )
 }
 
-function PaletteItem({ s, colorOf, onAdd }) {
-  return (
-    <button className="palette-item" style={{ '--cat': colorOf(s.type) }} onClick={() => onAdd(s.type)}>
-      <span className="node-icon" aria-hidden="true">{s.icon ? <Icon name={s.icon} size={14} /> : <span className="node-dot" />}</span>
-      {s.label}
-    </button>
-  )
-}
-
-function Palette({ specList, colorOf, onAdd, live }) {
-  const [open, setOpen] = useState(() => matchMedia('(min-width: 900px)').matches)
-  const basic = specList.filter((s) => !s.advanced)
-  const advanced = specList.filter((s) => s.advanced)
-  const groups = [...new Set(basic.map((s) => s.group || '기타'))]
-  return (
-    <div className="palette">
-      <div className="palette-head">
-        <button className="palette-toggle" aria-expanded={open} aria-controls="palette-body" onClick={() => setOpen(!open)}>
-          <Icon name="plus" />노드 추가<Icon name="chevron" size={14} />
-        </button>
-        <Hint label="노드 추가 방법">
-          노드를 선택한 채로 추가하면 그 다음 단계로 끼워 넣습니다. 한 출력에 여러 단계를 연결하면 동시에 실행되고, 합류 노드에서 다시 모입니다.
-          선택한 노드는 오른쪽에서 편집하고 Delete 키로 지웁니다. 실행 중에는 Esc로 정지합니다.
-        </Hint>
-      </div>
-      {open && (
-        <div className="palette-body" id="palette-body">
-          {!specList.length && <p className="muted">실행기 연결을 기다리는 중…</p>}
-          {!!specList.length && !live && <p className="hint-text">마지막으로 받은 노드 목록입니다 (실행기 연결 안 됨).</p>}
-          {groups.map((g) => (
-            <div key={g} role="group" aria-label={g} className="palette-group">
-              <span className="palette-group-label">{g}</span>
-              {basic.filter((s) => (s.group || '기타') === g).map((s) => <PaletteItem key={s.type} s={s} colorOf={colorOf} onAdd={onAdd} />)}
-            </div>
-          ))}
-          {advanced.length > 0 && (
-            <details className="palette-advanced">
-              <summary>고급 <span className="muted">ROS 토픽 직접 다루기</span></summary>
-              {advanced.map((s) => <PaletteItem key={s.type} s={s} colorOf={colorOf} onAdd={onAdd} />)}
-            </details>
-          )}
-        </div>
-      )}
-    </div>
-  )
-}
-
 export default function App() {
   // 선택 상태는 저장하지 않는다 (새로고침 후 이전 인스펙터가 열린 채 시작하지 않도록)
   const saved = useState(() => withPositions(store.get('workflow', DEFAULT)))[0]
@@ -166,6 +118,8 @@ export default function App() {
   const [connected, setConnected] = useState(ros.isConnected)
   const [everConnected, setEverConnected] = useState(ros.isConnected)
   const [notice, setNotice] = useState(null)
+  const [picker, setPicker] = useState(null) // { anchor, title, at }
+  const closePicker = useCallback(() => setPicker(null), [])
   const closeNotice = useCallback(() => setNotice(null), [])
   const flowRef = useRef()
   const fileRef = useRef()
@@ -180,6 +134,7 @@ export default function App() {
   const [specList, setSpecList] = useState(() => store.get('nodeTypes', []))
   const [specsLive, setSpecsLive] = useState(false)
   const names = status.joints || []
+  const estop = !!status.estop
   const running = status.state === 'running'
   const active = status.active || []
 
@@ -201,8 +156,9 @@ export default function App() {
   const byId = useMemo(() => new Map(nodes.map((n) => [n.id, n])), [nodes])
   const labelOf = (id) => {
     if (id === 'jog') return '조그'
+    if (id === '__home') return '홈 위치로 이동'
     const n = byId.get(id)
-    return n ? specOf(n.type)?.label ?? n.type : ''
+    return n ? n.data?.title || (specOf(n.type)?.label ?? n.type) : ''
   }
   const portOf = (e) => e.sourceHandle || outputsOf(specOf(byId.get(e.source)?.type))[0].id
 
@@ -263,36 +219,55 @@ export default function App() {
   const height = (n) => n.measured?.height ?? 72
   const fit = () => requestAnimationFrame(() => fitView({ ...FIT, duration: 200 }))
 
-  const add = (type) => {
+  // at: { source, port } 그 출력 바로 뒤에 끼워 넣기 (원래 이어지던 단계는 새 블록 뒤로)
+  //     { edge } 그 연결 사이에 끼워 넣기
+  //     없음 → 선택한 노드 뒤, 선택이 없으면 화면 가운데
+  const add = (type, at) => {
     const id = `n${Date.now()}`
     const node = { id, type, data: defaults(specs[type], names), selected: true }
-    const sel = nodes.find((n) => n.selected)
-    if (sel) {
-      // 선택한 노드의 첫 출력 바로 뒤에 끼워 넣고, 아래쪽 같은 열의 노드는 한 칸 내린다
-      const port = outputsOf(specOf(sel.type))[0].id
-      const newPort = outputsOf(specs[type])[0].id
-      node.position = {
-        x: sel.position.x + ((sel.measured?.width ?? NODE_W) - NODE_W) / 2,
-        y: sel.position.y + height(sel) + GAP,
-      }
-      setNodes((ns) => [...ns.map((n) => ({
-        ...n, selected: false,
-        position: n.id !== sel.id && Math.abs(n.position.x - node.position.x) < NODE_W && n.position.y >= node.position.y
-          ? { ...n.position, y: n.position.y + 72 + GAP } : n.position,
-      })), node])
-      setEdges((es) => {
-        const moved = es.filter((e) => e.source === sel.id && portOf(e) === port)
-        return [...es.filter((e) => !moved.includes(e)),
-          { id: `${sel.id}-${port}-${id}`, source: sel.id, target: id, ...(port !== 'out' ? { sourceHandle: port } : {}) },
-          ...moved.map((e) => ({ id: `${id}-${newPort}-${e.target}`, source: id, target: e.target, ...(newPort !== 'out' ? { sourceHandle: newPort } : {}) }))]
-      })
-    } else {
+    const newPort = outputsOf(specs[type])[0].id
+    const edge = at?.edge && edges.find((e) => e.id === at.edge)
+    const src = edge ? byId.get(edge.source) : at?.source ? byId.get(at.source) : nodes.find((n) => n.selected)
+    if (!src) {
       const r = flowRef.current.getBoundingClientRect()
       const c = screenToFlowPosition({ x: r.left + r.width / 2, y: r.top + r.height / 2 })
       node.position = { x: c.x - NODE_W / 2, y: c.y - 36 }
       setNodes((ns) => [...ns.map((n) => ({ ...n, selected: false })), node])
+      return
     }
+    const port = edge ? portOf(edge) : at?.port ?? outputsOf(specOf(src.type))[0].id
+    const moved = edge ? [edge] : edges.filter((e) => e.source === src.id && portOf(e) === port)
+    // 출력이 여럿이면(예/아니오…) 그 출력 쪽 열에 놓는다
+    const outs = outputsOf(specOf(src.type))
+    const i = Math.max(0, outs.findIndex((o) => o.id === port))
+    const col = outs.length > 1 ? (i - (outs.length - 1) / 2) * (NODE_W + COL_GAP) : 0
+    const tgt = edge && byId.get(edge.target)
+    node.position = tgt && tgt.position.y > src.position.y
+      ? { ...tgt.position }
+      : { x: src.position.x + ((src.measured?.width ?? NODE_W) - NODE_W) / 2 + col, y: src.position.y + height(src) + GAP }
+    // 아래쪽 같은 열의 노드는 한 칸 내린다
+    setNodes((ns) => [...ns.map((n) => ({
+      ...n, selected: false,
+      position: n.id !== src.id && Math.abs(n.position.x - node.position.x) < NODE_W && n.position.y >= node.position.y
+        ? { ...n.position, y: n.position.y + 72 + GAP } : n.position,
+    })), node])
+    setEdges((es) => [...es.filter((e) => !moved.includes(e)), link(src.id, port, id), ...moved.map((e) => link(id, newPort, e.target))])
   }
+
+  const duplicate = (id) => {
+    const n = byId.get(id)
+    const copy = { id: `n${Date.now()}`, type: n.type, data: structuredClone(n.data), position: { x: n.position.x + 32, y: n.position.y + 32 }, selected: true }
+    setNodes((ns) => [...ns.map((x) => ({ ...x, selected: false })), copy])
+  }
+
+  // 노드·연결선이 부르는 동작: 객체는 그대로 두고 함수만 매번 바꿔 끼워, 노드 전체가 다시 그려지지 않게 한다
+  const actions = useRef({}).current
+  Object.assign(actions, {
+    openPicker: (el, at) => setPicker({ anchor: anchorOf(el), at, title: at.edge ? '이 사이에 블록 추가' : '다음 블록 추가' }),
+    test: (id) => testNode(byId.get(id)),
+    duplicate,
+    remove: (id) => deleteElements({ nodes: [{ id }] }),
+  })
 
   // 한 출력에서 여러 단계로 연결하면 병렬 실행 (같은 연결 중복만 막는다)
   const onConnect = (c) => setEdges((es) => addEdge({ ...c, id: `${c.source}-${c.sourceHandle || 'out'}-${c.target}` }, es))
@@ -419,6 +394,7 @@ export default function App() {
 
   return (
     <Specs.Provider value={specCtx}>
+      <NodeActions.Provider value={actions}>
       <JointNames.Provider value={names}>
         <div className="app">
           <a className="skip-link" href="#workspace">워크플로 편집으로 건너뛰기</a>
@@ -432,12 +408,12 @@ export default function App() {
             {status.msg && <span className="topbar-msg error-text" title={status.msg}>{status.msg}</span>}
             <span className="spacer" />
             <div className="actions">
-              <button className="sim-btn" onClick={() => runWorkflow(runGraph(), 'sim')} disabled={!connected || running}
+              <button className="sim-btn" onClick={() => runWorkflow(runGraph(), 'sim')} disabled={!connected || running || estop}
                 title="디지털 트윈에서만 실행합니다. 실제 로봇·장비는 움직이지 않습니다">
                 <Icon name="sim" />시뮬레이션
               </button>
-              <button className="start-btn" onClick={() => runWorkflow(runGraph(), 'real')} disabled={!connected || running}
-                title={!connected ? '실행기와 연결되지 않음' : running ? '실행 중' : '실제 로봇으로 실행'}>
+              <button className="start-btn" onClick={() => runWorkflow(runGraph(), 'real')} disabled={!connected || running || estop}
+                title={!connected ? '실행기와 연결되지 않음' : estop ? '비상정지 상태: 해제한 뒤 실행' : running ? '실행 중' : '실제 로봇으로 실행'}>
                 <Icon name="play" />실행
               </button>
               <button className="danger" onClick={stopWorkflow} disabled={!connected} aria-keyshortcuts="Escape"
@@ -445,7 +421,12 @@ export default function App() {
                 <Icon name="stop" />정지
               </button>
             </div>
+            <button className="estop-btn" onClick={() => setEstop(true)} disabled={!connected || estop} aria-pressed={estop}
+              title={!connected ? '실행기와 연결되지 않음: 하드웨어 비상정지를 사용하세요' : '모든 동작을 즉시 멈추고 해제할 때까지 잠급니다. 하드웨어 비상정지(E-stop)를 대신하지 않습니다'}>
+              <Icon name="estop" size={20} />{estop ? '비상정지 중' : '비상정지'}
+            </button>
           </header>
+          <EstopBanner on={estop} connected={connected} onRelease={() => setEstop(false)} />
           <ConnectionBanner connected={connected} everConnected={everConnected} url={url} />
           <Notice notice={notice} onClose={closeNotice} />
           <main>
@@ -495,18 +476,27 @@ export default function App() {
                     onConnect={onConnect}
                     onNodesDelete={onNodesDelete}
                     deleteKeyCode={['Backspace', 'Delete']}
-                    defaultEdgeOptions={{ type: 'smoothstep', markerEnd: { type: MarkerType.ArrowClosed } }}
+                    edgeTypes={EDGE_TYPES}
+                    defaultEdgeOptions={EDGE_DEFAULTS}
+                    connectOnClick={false}
                     colorMode="system"
                     fitView
                     fitViewOptions={FIT}
                     minZoom={0.2}
                   >
-                    <Panel position="top-left"><Palette specList={specList} colorOf={colorOf} onAdd={add} live={specsLive} /></Panel>
+                    <Panel position="top-left" className="add-panel">
+                      <button className="add-block" aria-haspopup="dialog" aria-expanded={!!picker && !picker.at}
+                        onClick={(e) => setPicker({ anchor: anchorOf(e.currentTarget), at: null, title: editing ? '선택한 단계 뒤에 추가' : '블록 추가' })}>
+                        <Icon name="plus" />블록 추가
+                      </button>
+                      <Hint label="블록 추가·연결 방법">
+                        노드 아래의 + 를 누르면 그 다음에, 연결선 가운데의 + 를 누르면 그 사이에 블록을 넣습니다. 점을 끌어 다른 단계에 이으면 연결되고,
+                        한 출력에 여러 단계를 이으면 동시에 실행됩니다(합류 노드에서 다시 모임). 선택한 노드 위 버튼으로 시험·복제·삭제하고, Delete 키로도 지웁니다.
+                      </Hint>
+                    </Panel>
                     {editing && (
                       <Panel position="top-right" className="inspector-panel">
                         <Inspector key={editing.id} node={editing} onClose={deselect}
-                          onDelete={() => deleteElements({ nodes: [{ id: editing.id }] })}
-                          onTest={() => testNode(editing)}
                           links={linksOf(editing.id)} options={linkOptions()}
                           onAddLink={(port, target) => addLink(editing.id, port, target)} onRemoveLink={removeLink} />
                       </Panel>
@@ -519,7 +509,7 @@ export default function App() {
             </section>
             <aside aria-label="로봇">
               {view === 'edit' && viewer}
-              <Jog names={names} disabled={!connected || (running && status.node !== 'jog')} />
+              <Jog names={names} home={status.home} disabled={!connected || estop || (running && status.node !== 'jog')} />
               <Tabs tabs={[
                 { id: 'rec', label: <>녹화{episode.recording && <span className="tab-dot" aria-label="녹화 중" />}</>, content: <Episodes episode={episode} connected={connected} /> },
                 { id: 'log', label: '기록', content: <Logs entries={log.entries} labelOf={labelOf} /> },
@@ -527,8 +517,10 @@ export default function App() {
               ]} />
             </aside>
           </main>
+          {picker && <BlockPicker anchor={picker.anchor} title={picker.title} live={specsLive} onClose={closePicker} onPick={(type) => add(type, picker.at)} />}
         </div>
       </JointNames.Provider>
+      </NodeActions.Provider>
     </Specs.Provider>
   )
 }

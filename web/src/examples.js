@@ -2,7 +2,7 @@
 // 병렬 초기화 → 합류 → 3회 반복 { 접근 → AI 비전 판단(카메라) → (예) 집기·옮기기·놓기 / (아니오) 잠시 대기 } → 홈
 const mj = (id, x, y, joints) => ({ id, type: 'move_j', position: { x, y }, data: { joints, duration: 1.2 } })
 const e = (source, target, sourceHandle) => ({ id: `${source}-${sourceHandle || 'out'}-${target}`, source, target, ...(sourceHandle ? { sourceHandle } : {}) })
-const HOME = [0, 0, 0, 0, 0, 0]
+const home = (id, x, y) => ({ id, type: 'move_home', position: { x, y }, data: { duration: 1.5 } }) // 로봇 프로파일의 홈 자세
 
 export const EXAMPLES = [
   {
@@ -11,11 +11,11 @@ export const EXAMPLES = [
       nodes: [
         { id: 'start', type: 'start', position: { x: 70, y: 0 }, data: {} },
         { id: 'grip_open', type: 'gripper', position: { x: -134, y: 80 }, data: { action: '열기', settle: 0.5 } },
-        mj('home', 134, 80, HOME),
+        home('home', 134, 80),
         { id: 'ready', type: 'join', position: { x: 50, y: 200 }, data: {} },
         { id: 'repeat', type: 'loop', position: { x: 0, y: 280 }, data: { count: 3 } },
         mj('approach', -134, 400, [40, 35, 70, 0, 60, 0]),
-        mj('home_end', 134, 400, HOME),
+        home('home_end', 134, 400),
         { id: 'check', type: 'vlm_check', position: { x: -134, y: 510 }, data: { question: '그리퍼 아래 작업대에 집을 수 있는 부품이 있나요?', camera: '', timeout: 3, on_low: '정지', sim_result: '예' } },
         { id: 'grip_close', type: 'gripper', position: { x: -268, y: 650 }, data: { action: '닫기', settle: 0.5 } },
         { id: 'retry_wait', type: 'wait', position: { x: 0, y: 650 }, data: { sec: 1 } },

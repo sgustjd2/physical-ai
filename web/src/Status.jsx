@@ -166,3 +166,24 @@ export function ConnectionBanner({ connected, everConnected, url }) {
     </div>
   )
 }
+
+// 비상정지 잠금 상태: 해제는 두 번 눌러야 한다 (현장 태블릿에서 실수로 풀리지 않게)
+export function EstopBanner({ on, connected, onRelease }) {
+  const [armed, setArmed] = useState(false)
+  useEffect(() => {
+    if (!armed) return
+    const t = setTimeout(() => setArmed(false), 4000)
+    return () => clearTimeout(t)
+  }, [armed])
+  useEffect(() => { if (!on) setArmed(false) }, [on])
+  if (!on) return null
+  return (
+    <div className="estop-banner" role="alert">
+      <Icon name="estop" size={20} />
+      <span><b>비상정지 상태</b> 모든 동작을 멈췄고 실행·조그·홈 이동이 잠겨 있습니다. 로봇 주변의 안전을 확인한 뒤 해제하세요.</span>
+      <button className={armed ? 'danger' : ''} disabled={!connected} onClick={() => (armed ? onRelease() : setArmed(true))}>
+        {armed ? '한 번 더 눌러 해제' : '해제'}
+      </button>
+    </div>
+  )
+}

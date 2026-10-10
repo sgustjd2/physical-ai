@@ -7,6 +7,13 @@ joints: [joint1, joint2, joint3, joint4, joint5, joint6]
 # 팔 드라이버의 FollowJointTrajectory 액션 (ros2_control joint_trajectory_controller 표준)
 trajectory_action: /arm_controller/follow_joint_trajectory
 
+# 홈 자세 (°, joints 순서). 웹의 '홈으로' 버튼과 '홈 위치로 이동' 블록이 쓴다. 생략하면 전부 0
+home: [0, 0, 0, 0, 0, 0]
+
+# 웹 '비상정지'를 드라이버/안전 PLC 쪽에도 알릴 토픽 (std_msgs/Bool, true = 정지, latched).
+# 받는 쪽이 보호 정지(protective stop)를 걸게 연결한다. 하드웨어 비상정지 회로를 대신하지 않는다
+# estop_topic: /safety/software_estop
+
 # true면 드라이버 대신 모의 팔(ros/mock_arm.py)을 띄운다
 mock: true
 

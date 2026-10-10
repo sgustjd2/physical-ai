@@ -39,6 +39,7 @@ node.create_subscription(String, '/workflow/generate', lambda m: gen.update(json
 gen_cmd = node.create_publisher(String, '/workflow/generate/cmd', 10)
 run = node.create_publisher(String, '/workflow/run', 10)
 stop = node.create_publisher(Empty, '/workflow/stop', 10)
+estop = node.create_publisher(Bool, '/workflow/estop', 10)
 flag = node.create_publisher(Bool, '/smoke/flag', 10)
 
 
@@ -68,9 +69,9 @@ def wait_node(id_, sec=0.3):
     return {'id': id_, 'type': 'wait', 'data': {'sec': sec}}
 
 
-spin_until(lambda: run.get_subscription_count() and lib_cmd.get_subscription_count() and gen_cmd.get_subscription_count()
+spin_until(lambda: run.get_subscription_count() and estop.get_subscription_count() and lib_cmd.get_subscription_count() and gen_cmd.get_subscription_count()
            and joints and states and episode and types and library and sim_j1 and gen, 30)
-assert {'move_j', 'wait', 'wait_topic', 'publish', 'episode_start', 'episode_end', 'if', 'loop', 'join', 'gripper', 'vlm_check'} <= {t['type'] for t in types}
+assert {'move_j', 'move_home', 'wait', 'wait_topic', 'publish', 'episode_start', 'episode_end', 'if', 'loop', 'join', 'gripper', 'vlm_check'} <= {t['type'] for t in types}
 assert next(t for t in types if t['type'] == 'if')['outputs'] == [{'id': 'yes', 'label': '예'}, {'id': 'no', 'label': '아니오'}]
 
 # 1) start → move_j → wait_topic(외부 신호) → publish → 끝
@@ -180,5 +181,25 @@ gen_cmd.publish(String(data=json.dumps({'id': 'g1', 'prompt': '부품이 보이�
 spin_until(lambda: gen.get('ack') == 'g1', 120)
 assert gen.get('graph') or gen.get('error'), gen
 print('시나리오 생성기 응답:', '그래프 생성' if gen.get('graph') else gen['error'])
+
+# 13) 홈 위치로 이동: 프로파일의 home 자세로 (상태에 home이 실려 웹 버튼이 씀)
+end = run_until_end([{'id': 'm', 'type': 'move_j', 'data': {'joints': [20, 10, 0, 0, 0, 0], 'duration': 0.5}},
+                     {'id': 'h', 'type': 'move_home', 'data': {'duration': 0.5}}],
+                    [{'source': 's', 'target': 'm'}, {'source': 'm', 'target': 'h'}])
+assert end['state'] == 'done' and len(end['home']) == len(end['joints']), end
+got = [math.degrees(joints[n]) for n in end['joints']]
+assert all(abs(a - b) < 0.5 for a, b in zip(got, end['home'])), got
+
+# 14) 비상정지: 실행 중 즉시 정지 → 잠긴 동안 실행 거부 → 해제 후 다시 실행
+send([{'id': 'w', 'type': 'wait', 'data': {'sec': 0.05}}], [{'source': 's', 'target': 'w'}, {'source': 'w', 'target': 'w'}])
+spin_until(lambda: len(states) >= 3, 5)
+estop.publish(Bool(data=True))
+spin_until(lambda: states[-1]['state'] == 'stopped' and states[-1]['estop'], 5)
+send([wait_node('w')], [{'source': 's', 'target': 'w'}])
+spin_until(lambda: states and '비상정지' in states[-1]['msg'], 5)
+assert not any(st['state'] == 'running' for st in states), states
+estop.publish(Bool(data=False))
+spin_until(lambda: states and not states[-1]['estop'], 5)
+assert run_until_end([wait_node('w')], [{'source': 's', 'target': 'w'}])['state'] == 'done'
 
 print('smoke test OK')

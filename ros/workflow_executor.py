@@ -3,7 +3,9 @@
 토픽 (std_msgs/String 안에 JSON):
   /workflow/run        ← {"nodes": [{id, type, data}], "edges": [{source, target, sourceHandle?}], "mode": "real"|"sim"}
   /workflow/stop       ← std_msgs/Empty
-  /workflow/status     → {"state": idle|running|done|error|stopped, "node": id, "active": [id], "mode", "msg", "joints"}
+  /workflow/estop      ← std_msgs/Bool  true = 비상정지(잠금), false = 해제. 잠긴 동안 실행·조그·홈 이동을 모두 거부
+  /workflow/status     → {"state": idle|running|done|error|stopped, "node": id, "active": [id], "mode", "msg",
+                          "joints", "home"(°), "estop"}
   /workflow/node_types → [{type, label, group, icon, fields, outputs}]  (웹이 팔레트·입력 폼·출력 포트를 만드는 데 씀)
   /workflow/log        → {"entries": [{time, node, text}]}  최근 실행 기록 (시작·종료·AI 판단 근거 등, latched)
 
@@ -25,7 +27,7 @@ import rclpy
 from rclpy.executors import ExternalShutdownException
 from rclpy.node import Node
 from rclpy.qos import DurabilityPolicy, QoSProfile
-from std_msgs.msg import Empty, String
+from std_msgs.msg import Bool, Empty, String
 
 import nodes
 
@@ -71,6 +73,10 @@ class WorkflowExecutor(Node):
     def __init__(self):
         super().__init__('workflow_executor')
         self.joints = self.param('joints', [f'joint{i}' for i in range(1, 7)])
+        self.home = list(self.param('home', [0.0] * len(self.joints)))  # 홈 자세 (°), 로봇 프로파일
+        self.estop_topic = self.param('estop_topic', '')  # 있으면 비상정지 상태를 드라이버/PLC 쪽으로도 알림 (Bool)
+        self.estopped = False
+        self.last_status = ('idle', None, '')
         self.stop = threading.Event()
         self.lock = threading.Lock()          # 실행 상태(활성 노드, 합류 카운터, 오류)
         self.entity_lock = threading.Lock()   # 병렬 갈래가 퍼블리셔/구독을 동시에 만들 때
@@ -90,6 +96,8 @@ class WorkflowExecutor(Node):
         self.log_entries = deque(maxlen=100)
         self.create_subscription(String, '/workflow/run', self.on_run, 10)
         self.create_subscription(Empty, '/workflow/stop', lambda _: self.stop.set(), 10)
+        self.create_subscription(Bool, '/workflow/estop', self.on_estop, 10)
+        self.estop_pub = self.create_publisher(Bool, self.estop_topic, LATCHED) if self.estop_topic else None
 
         for m in nodes.load_all():
             if hasattr(m, 'setup'):
@@ -172,11 +180,30 @@ class WorkflowExecutor(Node):
 
     # ---- 실행 ----
     def status(self, state, node=None, msg=''):
+        self.last_status = (state, node, msg)
         data = {'state': state, 'node': node, 'active': list(self.active), 'msg': msg,
-                'mode': 'sim' if self.sim else 'real', 'joints': self.joints}
+                'mode': 'sim' if self.sim else 'real', 'joints': self.joints, 'home': self.home, 'estop': self.estopped}
         self.status_pub.publish(String(data=json.dumps(data, ensure_ascii=False)))
 
+    def on_estop(self, msg):
+        """소프트웨어 비상정지: 진행 중인 동작을 즉시 취소하고, 해제할 때까지 새 실행을 거부한다.
+        하드웨어 비상정지(안전 회로)를 대신하지 않는다 — estop_topic으로 드라이버/안전 PLC에 함께 알릴 뿐."""
+        if msg.data == self.estopped:
+            return
+        self.estopped = msg.data
+        if msg.data:
+            self.stop.set()
+        if self.estop_pub:
+            self.estop_pub.publish(Bool(data=msg.data))
+        self.tls.node = None
+        self.log('비상정지' if msg.data else '비상정지 해제')
+        with self.lock:
+            self.status(*self.last_status)
+
     def on_run(self, msg):
+        if self.estopped:
+            self.status(self.last_status[0], self.last_status[1], '비상정지 상태입니다. 주변 안전을 확인하고 해제한 뒤 다시 시도하세요')
+            return
         if self.thread and self.thread.is_alive():
             self.get_logger().warn('이미 실행 중, 무시함')
             return

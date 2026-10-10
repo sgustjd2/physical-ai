@@ -35,7 +35,7 @@ def request(ctx, op, **kw):
     return s
 
 
-@node('episode_start', '에피소드 시작 (녹화)', fields=[
+@node('episode_start', '에피소드 시작 (녹화)', desc='여기부터 관절·카메라를 학습 데이터로 녹화합니다', fields=[
     field('task', '작업 설명 (학습 지시문)', 'text', '물체를 집어서 옮기기'),
 ])
 def episode_start(ctx, d):
@@ -50,7 +50,7 @@ def episode_start(ctx, d):
         raise
 
 
-@node('episode_end', '에피소드 종료', fields=[
+@node('episode_end', '에피소드 종료', desc='녹화를 끝내고 성공/실패를 기록합니다', fields=[
     field('result', '결과', 'select', 'success', options=['success', 'fail']),
 ])
 def episode_end(ctx, d):

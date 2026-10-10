@@ -14,6 +14,9 @@ const PATHS = {
   layout: <path d="M8 3h8v5H8zM8 16h8v5H8zM12 8v8" />,
   view: <path d="M3 12a9 9 0 1 0 2.64-6.36M3 4v4.5h4.5" />,
   check: <path d="m5 12.5 4.5 4.5L19 7" />,
+  copy: <path d="M9 9h9.5a.5.5 0 0 1 .5.5V19a.5.5 0 0 1-.5.5H9a.5.5 0 0 1-.5-.5V9.5A.5.5 0 0 1 9 9Zm-3.5 6H5a.5.5 0 0 1-.5-.5V5a.5.5 0 0 1 .5-.5h9.5a.5.5 0 0 1 .5.5v.5" />,
+  home: <path d="M4 11 12 4l8 7M6.5 9v11h11V9M10 20v-5.5h4V20" />,
+  estop: <><circle cx="12" cy="12" r="9" /><circle cx="12" cy="12" r="4.5" fill="currentColor" stroke="none" /></>,
   info: <path d="M12 21a9 9 0 1 0 0-18 9 9 0 0 0 0 18Zm0-10v5m0-8.5v.5" />,
   // 노드 분류 아이콘 (플러그인 ICON 값)
   arm: <path d="M4 20h9M8.5 20v-5l5-5m0 0 4 3.5m0 0 2.5-1.5M17.5 13.5 19 16M8.5 15a1.5 1.5 0 1 0 0 .01M13.5 10a1.5 1.5 0 1 0 0 .01" />,
