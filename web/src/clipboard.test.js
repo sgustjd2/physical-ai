@@ -50,8 +50,11 @@ const exists = (x) => ['A', 'C', 'E'].includes(x) // D는 그새 지워짐
 const back = restoreLinks(now, links, new Map([['B', 'B']]), exists)
 assert.deepEqual(back.edges.map((e) => e.id), ['C-out-E', 'A-out-B', 'B-yes-C'])
 assert.equal(back.restored, 2)
+assert.deepEqual(back.skipped, [{ source: 'B', target: 'D' }]) // D가 지워져 잇지 못함 → 알림에 씀
 assert.equal(back.edges.find((e) => e.id === 'B-yes-C').sourceHandle, 'yes')
-// 이미 같은 연결이 있으면 중복으로 만들지 않음
-assert.equal(restoreLinks([{ id: 'x', source: 'A', target: 'B2' }], links, new Map([['B', 'B2']]), exists).restored, 1)
+// 이미 같은 연결이 있으면 중복으로 만들지 않음 (복원된 것으로 셈)
+const dup = restoreLinks([{ id: 'x', source: 'A', target: 'B2' }], links, new Map([['B', 'B2']]), exists)
+assert.equal(dup.edges.filter((e) => e.source === 'A' && e.target === 'B2').length, 1)
+assert.equal(dup.restored, 2)
 
 console.log('clipboard OK')

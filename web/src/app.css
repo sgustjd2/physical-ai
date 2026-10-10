@@ -267,6 +267,7 @@ input:focus-visible, select:focus-visible, textarea:focus-visible { outline-offs
 .notice > span { flex: 1; }
 .notice.info { background: var(--accent-soft); color: var(--text); }
 .notice.error { background: var(--danger-soft); color: var(--danger-text); }
+.notice.warn { background: var(--warn-soft); color: var(--warn); font-weight: 500; }
 .notice .ghost { min-height: 28px; color: var(--accent); font-weight: 600; }
 .notice .icon-btn { background: transparent; border-color: transparent; color: inherit; }
 .banner { gap: 6px; background: var(--warn-soft); color: var(--warn); font-weight: 500; }

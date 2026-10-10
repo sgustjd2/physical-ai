@@ -131,7 +131,8 @@ export function StepStrip({ steps, status, labelOf, selectedId, onSelect }) {
 export function Notice({ notice, onClose }) {
   useEffect(() => {
     if (!notice) return
-    const t = setTimeout(onClose, notice.undo ? 10000 : 6000)
+    // 되돌리기가 있거나 경고·오류면 읽고 대응할 시간을 더 준다
+    const t = setTimeout(onClose, notice.undo || notice.tone === 'warn' || notice.tone === 'error' ? 10000 : 6000)
     return () => clearTimeout(t)
   }, [notice, onClose])
   if (!notice) return null

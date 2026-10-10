@@ -297,10 +297,10 @@ export default function App() {
     clip.current = { text, pastes: 0, cut, doc: doc.current }
     setClipCount(n)
     if (cut) {
-      // 되돌려 붙일 때 다시 이을 바깥 연결 (잘라낸 블록 ↔ 남은 블록)
+      // 되돌려 붙일 때 다시 이을 바깥 연결 (잘라낸 블록 ↔ 남은 블록). other: 상대 블록 이름 (그새 지워지면 알림에 씀)
       const ids = new Set(parseClip(text).nodes.map((x) => x.id))
       const external = edges.filter((e) => ids.has(e.source) !== ids.has(e.target))
-        .map(({ source, target, sourceHandle }) => ({ source, target, sourceHandle }))
+        .map(({ source, target, sourceHandle }) => ({ source, target, sourceHandle, other: labelOf(ids.has(source) ? target : source) }))
       deleteElements({ nodes: [...ids].map((id) => ({ id })) })
         .then(() => { clip.current.links = { external, bridges: bridged.current } })
         .then(() => setNotice({ tone: 'info', text: `블록 ${n}개를 잘라냈습니다. Ctrl+V 또는 붙여넣기 버튼으로 붙이면 이 워크플로에서는 원래 자리로 돌아갑니다.` }))
@@ -308,6 +308,18 @@ export default function App() {
       setNotice({ tone: 'info', text: `블록 ${n}개를 복사했습니다. Ctrl+V 또는 붙여넣기 버튼으로 붙여넣습니다 (다른 워크플로에도 가능).` })
     }
     return text
+  }
+  // 붙여넣기 알림: 잘라낸 블록의 연결이 일부만 돌아왔으면 경고로, 이어질 블록이 지워진 것을 알린다
+  const pasteNotice = (n, back, r) => {
+    if (!back) return { tone: 'info', text: `블록 ${n}개를 붙여넣었습니다.` }
+    const total = back.external.length
+    if (!r.skipped.length) return { tone: 'info', text: `블록 ${n}개를 원래 자리에 되돌렸습니다${total ? ` (연결 ${total}개 복원)` : ''}.` }
+    const gone = [...new Set(r.skipped.map((e) => e.other))]
+    const names = gone.slice(0, 3).join(', ') + (gone.length > 3 ? ` 외 ${gone.length - 3}개` : '')
+    return {
+      tone: 'warn',
+      text: `블록 ${n}개를 원래 자리에 되돌렸지만 연결은 ${total}개 중 ${r.restored}개만 복원했습니다. 이어질 블록이 지워짐: ${names}`,
+    }
   }
   const paste = (text) => {
     const c = parseClip(text)
@@ -320,9 +332,10 @@ export default function App() {
       clip.current.pastes += 1
       dx = dy = 40 * clip.current.pastes // 원본이 아직 있음: 원본 옆에 계단식으로
     } else if (mine && clip.current.cut && clip.current.doc === doc.current) {
-      // 같은 워크플로에서 잘라낸 블록: 처음엔 원래 자리·원래 id·원래 연결로 되돌리고, 또 붙이면 그 옆에 사본으로
-      if (!clip.current.pastes) back = clip.current.links
-      dx = dy = 40 * clip.current.pastes++
+      // 같은 워크플로에서 잘라낸 블록이 아직 안 돌아왔으면 원래 자리·원래 id·원래 연결로 (붙여넣기를 되돌린 뒤 다시 붙여도 마찬가지).
+      // 돌아온 뒤 또 붙이면 원래 id가 있으므로 위 갈래(원본 옆 사본)로 간다
+      if (c.nodes.every((n) => !byId.has(n.id))) back = clip.current.links
+      dx = dy = back ? 0 : 40 * ++clip.current.pastes
     } else {
       // 다른 워크플로·다른 탭에서 온 블록: 지금 보이는 화면 가운데로
       const r = flowRef.current.getBoundingClientRect()
@@ -333,13 +346,10 @@ export default function App() {
     const stamp = Date.now()
     let seq = 0
     const g = instantiate(c, (old) => (back && !byId.has(old) ? old : `n${stamp}_${seq++}`), dx, dy)
-    const r = back ? restoreLinks([...edges, ...g.edges], back, g.id, (x) => byId.has(x)) : { edges: [...edges, ...g.edges], restored: 0 }
+    const r = back ? restoreLinks([...edges, ...g.edges], back, g.id, (x) => byId.has(x)) : { edges: [...edges, ...g.edges] }
     setNodes((ns) => [...ns.map((n) => (n.selected ? { ...n, selected: false } : n)), ...g.nodes])
     setEdges(r.edges)
-    setNotice({
-      tone: 'info',
-      text: back ? `블록 ${g.nodes.length}개를 원래 자리에 되돌렸습니다${r.restored ? ` (연결 ${r.restored}개 복원)` : ''}.` : `블록 ${g.nodes.length}개를 붙여넣었습니다.`,
-    })
+    setNotice(pasteNotice(g.nodes.length, back, r))
     return true
   }
 
