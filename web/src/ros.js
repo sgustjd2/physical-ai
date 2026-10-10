@@ -39,13 +39,16 @@ export const nodeTypesTopic = json('/workflow/node_types') // 노드 타입과 �
 export const episodeTopic = json('/episode/status') // 녹화 상태 + 최근 에피소드
 export const robotDescription = json('/robot_description') // URDF (robots/<로봇>/ 또는 제조사 드라이버)
 export const libraryTopic = json('/workflow/library') // GB10에 저장된 워크플로 목록 (ros/workflow_store.py)
+export const logTopic = json('/workflow/log') // 실행 기록: 시작·종료·AI 판단 근거
+export const generateTopic = json('/workflow/generate') // AI 시나리오 생성 결과 (ros/scenario_ai.py)
 
 const runTopic = json('/workflow/run')
 const stopTopic = topic('/workflow/stop', 'std_msgs/msg/Empty')
 const episodeCmd = json('/episode/cmd')
 const libraryCmd = json('/workflow/library/cmd')
+const generateCmd = json('/workflow/generate/cmd')
 // 미리 advertise 해둔다: 처음 만든 퍼블리셔로 바로 보내면 디스커버리 전에 메시지가 사라질 수 있음
-for (const t of [runTopic, stopTopic, episodeCmd, libraryCmd]) t.advertise()
+for (const t of [runTopic, stopTopic, episodeCmd, libraryCmd, generateCmd]) t.advertise()
 
 // mode: 'real' = 실제 로봇, 'sim' = 디지털 트윈에서만 (실제 팔·장비는 그대로)
 export const runWorkflow = (graph, mode = 'real') => runTopic.publish({ data: JSON.stringify({ ...graph, mode }) })
@@ -53,6 +56,11 @@ export const stopWorkflow = () => stopTopic.publish({})
 // crypto.randomUUID는 http(비보안) 접속에선 없으므로 Math.random
 const cmdId = () => Math.random().toString(36).slice(2, 10)
 export const sendEpisode = (op, extra = {}) => episodeCmd.publish({ data: JSON.stringify({ op, id: cmdId(), ...extra }) })
+export const sendGenerate = (prompt) => {
+  const id = cmdId()
+  generateCmd.publish({ data: JSON.stringify({ id, prompt }) })
+  return id
+}
 export const sendLibrary = (op, extra = {}) => {
   const id = cmdId()
   libraryCmd.publish({ data: JSON.stringify({ op, id, ...extra }) })

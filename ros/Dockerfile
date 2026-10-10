@@ -3,6 +3,9 @@ FROM ros:jazzy-ros-base
 RUN apt-get update && apt-get install -y --no-install-recommends \
       ros-jazzy-rosbridge-suite ros-jazzy-control-msgs \
       ros-jazzy-robot-state-publisher ros-jazzy-rosbag2-storage-mcap \
+      python3-pip python3-pil \
     && rm -rf /var/lib/apt/lists/*
+# AI 비전 판단·시나리오 생성 (Claude). Ubuntu 24.04 시스템 Python이라 --break-system-packages 필요
+RUN pip3 install --no-cache-dir --break-system-packages anthropic==1.13.0
 # 코드·로봇 프로파일·데이터는 이미지에 굽지 않고 docker-compose에서 마운트 → 수정 후 restart만 하면 됨
 CMD ["ros2", "launch", "/ros/bringup.launch.py"]

@@ -2,14 +2,15 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
   addEdge, Background, Controls, MarkerType, Panel, ReactFlow, useEdgesState, useNodesState, useReactFlow,
 } from '@xyflow/react'
+import { AIBuilder } from './AIBuilder'
 import { Hint } from './Hint'
 import { Icon } from './icons'
 import { LibraryMenu } from './Library'
 import {
-  episodeTopic, libraryTopic, nodeTypesTopic, ros, runWorkflow, sendLibrary, statusTopic, stopWorkflow, url,
+  episodeTopic, generateTopic, libraryTopic, logTopic, nodeTypesTopic, ros, runWorkflow, sendLibrary, statusTopic, stopWorkflow, url,
 } from './ros'
 import { CATEGORY_COLORS, defaults, FlowNode, Inspector, JointNames, outputsOf, Specs, START } from './nodes'
-import { elapsed, Episodes, Jog, Tabs, Topics, useTick } from './Panels'
+import { elapsed, Episodes, Jog, Logs, Tabs, Topics, useTick } from './Panels'
 import { ConnectionBanner, HealthBar, Notice, RobotMode, RunStatus, StepStrip } from './Status'
 import Viewer from './Viewer'
 
@@ -52,6 +53,39 @@ const toGraph = (nodes, edges) => ({
 const snapshot = (nodes, edges) => JSON.stringify(toGraph(nodes, edges).nodes.map((n) => [n.id, n.type, n.data]))
   + JSON.stringify(edges.map((e) => [e.source, e.target, e.sourceHandle || '']))
 const withPositions = (g) => ({ ...g, nodes: g.nodes.map((n) => ({ ...n, position: n.position ?? { x: 0, y: 0 }, selected: false })) })
+
+// 자동 배치: 시작에서의 거리(깊이)별로 한 줄씩, 같은 깊이는 옆으로 (분기·병렬이 나란히 보이게). 연결 안 된 노드는 오른쪽 열
+function arrange(nodes, edges) {
+  const h = (n) => n.measured?.height ?? 72
+  const out = new Map()
+  for (const e of edges) out.set(e.source, [...(out.get(e.source) || []), e.target])
+  const start = nodes.find((n) => n.type === 'start')
+  const depth = new Map(start ? [[start.id, 0]] : [])
+  const q = start ? [start.id] : []
+  while (q.length) {
+    const id = q.shift()
+    for (const t of out.get(id) || []) if (!depth.has(t) && nodes.some((n) => n.id === t)) { depth.set(t, depth.get(id) + 1); q.push(t) }
+  }
+  const byId = new Map(nodes.map((n) => [n.id, n]))
+  const rows = []
+  for (const [id, d] of depth) (rows[d] ||= []).push(id)
+  const pos = {}
+  let y = 0
+  for (const row of rows) {
+    row.forEach((id, i) => {
+      const w = byId.get(id).measured?.width ?? NODE_W
+      pos[id] = { x: (i - (row.length - 1) / 2) * (NODE_W + COL_GAP) + (NODE_W - w) / 2, y }
+    })
+    y += Math.max(...row.map((id) => h(byId.get(id)))) + GAP
+  }
+  const right = (Math.max(1, ...rows.map((r) => r.length)) / 2) * (NODE_W + COL_GAP) + 80
+  y = 0
+  for (const n of nodes.filter((x) => !pos[x.id])) {
+    pos[n.id] = { x: right, y }
+    y += h(n) + GAP
+  }
+  return nodes.map((n) => ({ ...n, position: pos[n.id] }))
+}
 
 // latched JSON 토픽 → React state
 function useJsonTopic(t, init) {
@@ -140,6 +174,8 @@ export default function App() {
   const status = useJsonTopic(statusTopic, { state: 'idle', joints: [], active: [] })
   const episode = useJsonTopic(episodeTopic, { recording: false, episodes: [], pending: true })
   const library = useJsonTopic(libraryTopic, { items: [], pending: true })
+  const log = useJsonTopic(logTopic, { entries: [] })
+  const gen = useJsonTopic(generateTopic, {})
   // 노드 타입은 마지막으로 받은 것을 저장해 두어, 연결이 끊겨도 이름·색이 유지되게 한다
   const [specList, setSpecList] = useState(() => store.get('nodeTypes', []))
   const [specsLive, setSpecsLive] = useState(false)
@@ -171,7 +207,7 @@ export default function App() {
   const portOf = (e) => e.sourceHandle || outputsOf(specOf(byId.get(e.source)?.type))[0].id
 
   // 시작에서 도달하는 노드를 너비 우선으로 (진행 표시·단계 번호·자동 배치에 사용)
-  const { steps, depth } = useMemo(() => {
+  const steps = useMemo(() => {
     const out = new Map()
     for (const e of edges) out.set(e.source, [...(out.get(e.source) || []), e.target])
     const start = nodes.find((n) => n.type === 'start')
@@ -181,7 +217,7 @@ export default function App() {
       const id = q.shift()
       for (const t of out.get(id) || []) if (!d.has(t) && byId.has(t)) { d.set(t, d.get(id) + 1); q.push(t) }
     }
-    return { steps: [...d.keys()].slice(1), depth: d }
+    return [...d.keys()].slice(1)
   }, [nodes, edges, byId])
 
   // React Flow는 nodeTypes 객체가 바뀔 때마다 경고하므로 타입 목록이 바뀔 때만 새로 만든다
@@ -292,26 +328,8 @@ export default function App() {
   const addLink = (source, port, target) => onConnect({ source, target, sourceHandle: port === 'out' ? null : port })
   const removeLink = (edgeId) => setEdges((es) => es.filter((e) => e.id !== edgeId))
 
-  // 자동 배치: 시작에서의 거리(깊이)별로 한 줄씩, 같은 깊이는 옆으로 (분기·병렬이 나란히 보이게)
   const layout = () => {
-    const rows = []
-    for (const [id, d] of depth) (rows[d] ||= []).push(id)
-    const pos = {}
-    let y = 0
-    for (const row of rows) {
-      row.forEach((id, i) => {
-        const w = byId.get(id).measured?.width ?? NODE_W
-        pos[id] = { x: (i - (row.length - 1) / 2) * (NODE_W + COL_GAP) + (NODE_W - w) / 2, y }
-      })
-      y += Math.max(...row.map((id) => height(byId.get(id)))) + GAP
-    }
-    const right = (Math.max(1, ...rows.map((r) => r.length)) / 2) * (NODE_W + COL_GAP) + 80
-    y = 0
-    for (const n of nodes.filter((x) => !pos[x.id])) {
-      pos[n.id] = { x: right, y }
-      y += height(n) + GAP
-    }
-    setNodes((ns) => ns.map((n) => ({ ...n, position: pos[n.id] })))
+    setNodes((ns) => arrange(ns, edges))
     fit()
   }
 
@@ -332,6 +350,9 @@ export default function App() {
     const g = withPositions(w.graph)
     replace(g, w.name.replace(/^예제: /, ''), `${w.name}을(를) 열었습니다.`, example ? null : snapshot(g.nodes, g.edges))
   }
+  // 새 문서로 연다: 열려 있던 워크플로 이름을 이어 쓰면 저장할 때 그 워크플로를 덮어씀
+  const loadGenerated = (g) => replace({ nodes: arrange(g.nodes.map((n) => ({ ...n, position: { x: 0, y: 0 } })), g.edges), edges: g.edges },
+    'AI 시나리오', 'AI가 만든 시나리오를 불러왔습니다. 자세 값을 확인하고 시뮬레이션으로 먼저 검증하세요.')
   const deleteFromServer = (w) => {
     sendLibrary('delete', { name: w.name })
     setNotice({ tone: 'info', text: `${w.name}을(를) GB10에서 삭제했습니다.`, undo: () => sendLibrary('save', { name: w.name, graph: w.graph }) })
@@ -449,6 +470,7 @@ export default function App() {
                 <button className="ghost" onClick={newWorkflow} title="빈 워크플로로 시작 (되돌리기 가능)">
                   <Icon name="file" /><span className="label">새로 만들기</span>
                 </button>
+                <AIBuilder gen={gen} connected={connected} onLoad={loadGenerated} />
                 <LibraryMenu items={library.items || []} connected={connected && !library.pending} onOpen={openFromServer}
                   onDelete={deleteFromServer} onImportFile={() => fileRef.current.click()} onExportFile={exportJson} />
                 <button className="ghost save-btn" onClick={saveToServer} disabled={!connected}
@@ -500,6 +522,7 @@ export default function App() {
               <Jog names={names} disabled={!connected || (running && status.node !== 'jog')} />
               <Tabs tabs={[
                 { id: 'rec', label: <>녹화{episode.recording && <span className="tab-dot" aria-label="녹화 중" />}</>, content: <Episodes episode={episode} connected={connected} /> },
+                { id: 'log', label: '기록', content: <Logs entries={log.entries} labelOf={labelOf} /> },
                 { id: 'topics', label: '토픽', content: <Topics connected={connected} /> },
               ]} />
             </aside>

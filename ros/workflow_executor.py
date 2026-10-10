@@ -5,6 +5,7 @@
   /workflow/stop       ← std_msgs/Empty
   /workflow/status     → {"state": idle|running|done|error|stopped, "node": id, "active": [id], "mode", "msg", "joints"}
   /workflow/node_types → [{type, label, group, icon, fields, outputs}]  (웹이 팔레트·입력 폼·출력 포트를 만드는 데 씀)
+  /workflow/log        → {"entries": [{time, node, text}]}  최근 실행 기록 (시작·종료·AI 판단 근거 등, latched)
 
 이 파일은 그래프를 걷는 일만 한다. 노드 타입별 동작은 nodes/ 플러그인에 있다.
   - start에서 출발해, 노드가 돌려준 출력 포트(sourceHandle)에 연결된 노드로 진행한다.
@@ -17,7 +18,8 @@ import json
 import math
 import threading
 import time
-from collections import defaultdict
+from collections import defaultdict, deque
+from datetime import datetime
 
 import rclpy
 from rclpy.executors import ExternalShutdownException
@@ -84,6 +86,8 @@ class WorkflowExecutor(Node):
         self.walkers = []
         self.errors = []
         self.status_pub = self.create_publisher(String, '/workflow/status', LATCHED)
+        self.log_pub = self.create_publisher(String, '/workflow/log', LATCHED)
+        self.log_entries = deque(maxlen=100)
         self.create_subscription(String, '/workflow/run', self.on_run, 10)
         self.create_subscription(Empty, '/workflow/stop', lambda _: self.stop.set(), 10)
 
@@ -159,6 +163,13 @@ class WorkflowExecutor(Node):
     def on_finish(self, key, fn):
         self.cleanups[key] = fn
 
+    def log(self, text):
+        with self.entity_lock:
+            self.log_entries.append({'time': datetime.now().astimezone().isoformat(timespec='seconds'),
+                                     'node': self.current, 'text': text})
+            self.log_pub.publish(String(data=json.dumps({'entries': list(self.log_entries)}, ensure_ascii=False)))
+        self.get_logger().info(text)
+
     # ---- 실행 ----
     def status(self, state, node=None, msg=''):
         data = {'state': state, 'node': node, 'active': list(self.active), 'msg': msg,
@@ -227,6 +238,11 @@ class WorkflowExecutor(Node):
         self.sim = graph.get('mode') == 'sim'
         self.active, self.walkers, self.errors, self.last_node = [], [], [], None
         state, node_id, err = 'done', None, ''
+        t0 = time.monotonic()
+        quiet = [n['id'] for n in graph.get('nodes', [])] == ['start', 'jog']  # 조그는 기록하지 않음
+        if not quiet:
+            self.tls.node = None
+            self.log(f'{"시뮬레이션" if self.sim else "실제 로봇"} 실행 시작')
         try:
             g = Graph(graph)
             self.fork(g, g.next(g.start, nodes.first_port('start')))
@@ -250,6 +266,10 @@ class WorkflowExecutor(Node):
             except Exception as e:  # noqa: BLE001
                 self.get_logger().error(f'정리 실패: {e!r}')
         self.active = []
+        if not quiet:
+            self.tls.node = node_id
+            label = {'done': '완료', 'stopped': '정지됨', 'error': f'오류: {err}'}[state]
+            self.log(f'{label} ({time.monotonic() - t0:.1f}s)')
         self.status(state, node_id, err)
 
 

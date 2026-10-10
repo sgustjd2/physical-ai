@@ -159,6 +159,23 @@ export function Episodes({ episode, connected }) {
   )
 }
 
+const clock = new Intl.DateTimeFormat('ko-KR', { hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false })
+
+// 실행 기록: 실행 시작·종료, AI 판단과 근거 (최신이 위)
+export function Logs({ entries, labelOf }) {
+  if (!entries?.length) return <p className="muted empty">아직 실행 기록이 없습니다. 워크플로를 실행하거나 시뮬레이션하면 여기에 남습니다.</p>
+  return (
+    <ol className="log-list">
+      {[...entries].reverse().map((e, i) => (
+        <li key={entries.length - i} className={/^오류|확신하지 못함/.test(e.text) ? 'error-text' : e.text.startsWith('AI 판단') ? 'log-ai' : ''}>
+          <time dateTime={e.time}>{clock.format(new Date(e.time))}</time>
+          <span className="log-text">{e.node && labelOf(e.node) ? <b>{labelOf(e.node)} </b> : null}{e.text}</span>
+        </li>
+      ))}
+    </ol>
+  )
+}
+
 export function Topics({ connected }) {
   const [list, setList] = useState([])
   const [sel, setSel] = useState('')

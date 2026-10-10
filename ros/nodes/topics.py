@@ -12,7 +12,7 @@ from nodes import field, node
 
 GROUP = '장비 연동'
 ICON = 'device'
-ORDER = 3
+ORDER = 4
 
 OPS = {'==': operator.eq, '!=': operator.ne, '>': operator.gt,
        '<': operator.lt, '>=': operator.ge, '<=': operator.le}

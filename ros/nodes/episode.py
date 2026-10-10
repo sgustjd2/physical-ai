@@ -13,7 +13,7 @@ from nodes import field, node
 
 GROUP = '데이터 수집'
 ICON = 'data'
-ORDER = 4
+ORDER = 5
 
 LATCHED = QoSProfile(depth=1, durability=DurabilityPolicy.TRANSIENT_LOCAL)
 

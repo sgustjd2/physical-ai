@@ -42,6 +42,7 @@ ctx (workflow_executor.WorkflowExecutor, rclpy Node) 가 제공하는 것:
   ctx.wait_for(topic, cls, pred, timeout=0, qos=10)  조건을 만족하는 메시지가 올 때까지, 그 메시지 반환
   ctx.publish(topic, msg)             퍼블리셔 캐시 + 첫 메시지 유실 방지
   ctx.on_finish(key, fn)              워크플로가 어떻게 끝나든 fn(state) 호출 (정리용). ctx.cleanups.pop(key)로 해제
+  ctx.log(text)                       실행 기록(/workflow/log)에 한 줄 남김 — 웹 '기록' 탭에 보인다 (AI 판단 근거 등)
   ctx.graph                           실행 중인 그래프 (메타데이터 기록용)
 
 field kind: text | number | select(options) | json | joints(관절 수만큼 입력 + 현재 자세 티칭)

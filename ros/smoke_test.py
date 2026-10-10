@@ -26,7 +26,7 @@ LATCHED = QoSProfile(depth=1, durability=DurabilityPolicy.TRANSIENT_LOCAL)
 
 rclpy.init()
 node = rclpy.create_node('smoke_test')
-states, joints, episode, types, library, sim_j1 = [], {}, {}, [], {}, []
+states, joints, episode, types, library, sim_j1, logs, gen = [], {}, {}, [], {}, [], {}, {}
 node.create_subscription(String, '/workflow/status', lambda m: states.append(json.loads(m.data)), LATCHED)
 node.create_subscription(String, '/episode/status', lambda m: episode.update(json.loads(m.data)), LATCHED)
 node.create_subscription(String, '/workflow/node_types', lambda m: types.extend(json.loads(m.data)), LATCHED)
@@ -34,6 +34,9 @@ node.create_subscription(JointState, '/joint_states', lambda m: joints.update(zi
 node.create_subscription(String, '/workflow/library', lambda m: library.update(json.loads(m.data)), LATCHED)
 node.create_subscription(JointState, '/sim/joint_states', lambda m: sim_j1.append(math.degrees(m.position[0])), 10)
 lib_cmd = node.create_publisher(String, '/workflow/library/cmd', 10)
+node.create_subscription(String, '/workflow/log', lambda m: logs.update(json.loads(m.data)), LATCHED)
+node.create_subscription(String, '/workflow/generate', lambda m: gen.update(json.loads(m.data)), LATCHED)
+gen_cmd = node.create_publisher(String, '/workflow/generate/cmd', 10)
 run = node.create_publisher(String, '/workflow/run', 10)
 stop = node.create_publisher(Empty, '/workflow/stop', 10)
 flag = node.create_publisher(Bool, '/smoke/flag', 10)
@@ -65,8 +68,9 @@ def wait_node(id_, sec=0.3):
     return {'id': id_, 'type': 'wait', 'data': {'sec': sec}}
 
 
-spin_until(lambda: run.get_subscription_count() and lib_cmd.get_subscription_count() and joints and states and episode and types and library and sim_j1, 30)
-assert {'move_j', 'wait', 'wait_topic', 'publish', 'episode_start', 'episode_end', 'if', 'loop', 'join', 'gripper'} <= {t['type'] for t in types}
+spin_until(lambda: run.get_subscription_count() and lib_cmd.get_subscription_count() and gen_cmd.get_subscription_count()
+           and joints and states and episode and types and library and sim_j1 and gen, 30)
+assert {'move_j', 'wait', 'wait_topic', 'publish', 'episode_start', 'episode_end', 'if', 'loop', 'join', 'gripper', 'vlm_check'} <= {t['type'] for t in types}
 assert next(t for t in types if t['type'] == 'if')['outputs'] == [{'id': 'yes', 'label': '예'}, {'id': 'no', 'label': '아니오'}]
 
 # 1) start → move_j → wait_topic(외부 신호) → publish → 끝
@@ -161,5 +165,20 @@ assert not library['error'] and any(w['name'] == '스모크 워크플로' for w 
 lib_cmd.publish(String(data=json.dumps({'op': 'delete', 'id': 'dl1', 'name': '스모크 워크플로'}, ensure_ascii=False)))
 spin_until(lambda: library.get('ack') == 'dl1', 5)
 assert not any(w['name'] == '스모크 워크플로' for w in library['items']), library
+
+# 11) AI 비전 판단: 시뮬레이션에서는 AI를 부르지 않고 지정한 방향으로, 판단은 실행 기록에 남는다
+end = run_until_end([{'id': 'v', 'type': 'vlm_check', 'data': {'question': '부품이 있나요?', 'sim_result': '아니오'}},
+                     wait_node('vy'), wait_node('vn')],
+                    [{'source': 's', 'target': 'v'}, {'source': 'v', 'sourceHandle': 'yes', 'target': 'vy'},
+                     {'source': 'v', 'sourceHandle': 'no', 'target': 'vn'}], mode='sim')
+assert end['state'] == 'done' and 'vn' in visited() and 'vy' not in visited(), visited()
+spin_until(lambda: logs.get('entries') and '완료' in logs['entries'][-1]['text'], 5)
+assert any('AI 판단 생략' in e['text'] for e in logs['entries']), logs['entries'][-3:]
+
+# 12) AI 시나리오 생성기: 요청에 응답(ack)한다. API 키가 없는 환경이면 이유가 담긴 오류로 응답
+gen_cmd.publish(String(data=json.dumps({'id': 'g1', 'prompt': '부품이 보이면 집어서 옮기기'}, ensure_ascii=False)))
+spin_until(lambda: gen.get('ack') == 'g1', 120)
+assert gen.get('graph') or gen.get('error'), gen
+print('시나리오 생성기 응답:', '그래프 생성' if gen.get('graph') else gen['error'])
 
 print('smoke test OK')

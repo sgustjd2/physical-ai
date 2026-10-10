@@ -2,7 +2,7 @@
 
   ros2 launch bringup.launch.py robot:=demo_arm
 
-  항상: rosbridge(웹소켓 :9090), 워크플로 실행기·저장소, 에피소드 녹화기,
+  항상: rosbridge(웹소켓 :9090), 워크플로 실행기·저장소·AI 시나리오 생성기, 에피소드 녹화기,
         디지털 트윈 팔(/sim — 시뮬레이션 실행용, 쉬는 동안 실제 자세를 따라감)
   mock: true 이면 모의 팔, urdf 가 있으면 robot_state_publisher(/robot_description, /tf)
 """
@@ -38,11 +38,13 @@ def setup(context):
     cfg = yaml.safe_load(profile.read_text(encoding='utf-8'))
 
     executor = {'joints': cfg['joints'], 'trajectory_action': cfg['trajectory_action']}
-    if cfg.get('gripper_topic'):
-        executor['gripper_topic'] = cfg['gripper_topic']
+    for key in ('gripper_topic', 'camera_topic'):  # 선택 항목: 프로파일에 있으면 실행기에 전달
+        if cfg.get(key):
+            executor[key] = cfg[key]
     actions = [
         script('workflow_executor.py', **executor),
         script('workflow_store.py'),
+        script('scenario_ai.py'),
         script('recorder.py', topics=cfg.get('record_topics', ['/joint_states']), robot=robot),
         script('mock_arm.py', ros_args=['-r', '__ns:=/sim', '-r', '__node:=sim_arm'], label='sim_arm',
                joints=cfg['joints'], mirror_topic='/joint_states'),

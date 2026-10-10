@@ -17,6 +17,9 @@ urdf: robot.urdf
 # 그리퍼 노드가 보내는 토픽 (std_msgs/Bool, true=닫기). 장비에 맞게 바꾼다
 gripper_topic: /gripper/cmd
 
+# AI 비전 판단 노드가 보는 카메라 (sensor_msgs/Image 또는 CompressedImage)
+camera_topic: /camera/color/image_raw/compressed
+
 # 에피소드 녹화 대상 토픽. 카메라를 달면 여기에 추가 (예: /camera/color/image_raw/compressed)
 record_topics:
   - /joint_states

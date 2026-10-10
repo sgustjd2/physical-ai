@@ -5,6 +5,8 @@
 - **노코드 워크플로**: 비개발자가 노드를 연결해 공정을 만든다. 조건 분기(예/아니오), 병렬 실행과 합류, 반복 N회. 용도별 색(동작·흐름·장비·데이터), 핵심 항목만 보이고 나머지는 '고급'으로 접힘
 - **만들고 → 반영하고 → 시뮬레이션**: GB10에 이름 붙여 저장(누가 접속하든 같은 워크플로), '시뮬레이션'은 디지털 트윈 팔에서만 실행(실제 로봇·장비는 그대로), '실행'은 실제 로봇
 - **디지털 트윈**: 트윈 보기에서 3D가 주화면. 선택한 단계의 목표 자세를 고스트로 미리 보기, 실행 중 명령 목표 vs 실제 자세, 실제 로봇/시뮬레이션 표시
+- **AI 인식 (VLM)**: 'AI 비전 판단' 노드가 카메라 영상을 보고 질문(예: "집을 부품이 있나요?")에 예/아니오로 답해 분기. 판단 근거는 '기록' 탭에 남음
+- **AI로 만들기**: 작업을 말로 설명하면 AI가 지금 서버에 있는 노드만으로 시나리오(분기·반복·비전 판단 포함)를 만들어 편집기로 불러옴 → 사람이 확인하고 시뮬레이션
 - **ROS2 연동**: 아무 토픽이나 실시간으로 보기, 신호 대기·발행 (그리퍼/PLC/센서 연결)
 - **에피소드 녹화**: 관절 상태·명령·카메라를 rosbag2(mcap)로 녹화. 작업 설명(지시문)과 성공/실패를 함께 저장 → 모방학습/VLA 데이터
 - **모의 로봇팔**: 하드웨어 없이 개발
@@ -14,6 +16,8 @@
 | 하고 싶은 일 | 고치는 곳 | 코드 수정 |
 |---|---|---|
 | 다른 로봇(또는 작업 셀)에 붙이기 | `robots/<이름>/robot.yaml` + URDF 추가, `.env`에 `ROBOT=<이름>` | 없음 |
+| AI 기능 켜기 | GB10의 `.env`에 `ANTHROPIC_API_KEY=...` (저장소에 넣지 않음) | 없음 |
+| AI 비전 판단에 쓸 카메라 | `robots/<이름>/robot.yaml`의 `camera_topic` | 없음 |
 | 카메라 등 녹화할 토픽 추가 | `robots/<이름>/robot.yaml`의 `record_topics` | 없음 |
 | 새 장비/기능을 워크플로 노드로 | `ros/nodes/<파일>.py` 하나 추가 | 웹은 수정 없음 (UI 자동 생성) |
 | 업데이트 배포 | `git pull && docker compose up -d --build` | — |
@@ -29,6 +33,7 @@ flowchart LR
     RB["rosbridge :9090"]
     EX["workflow_executor<br/>+ nodes/ 플러그인"]
     ST["workflow_store<br/>(data/workflows)"]
+    AI["scenario_ai<br/>(AI로 만들기)"]
     SIM["sim_arm (/sim)<br/>디지털 트윈 팔"]
     REC["recorder<br/>(rosbag2 → data/episodes)"]
     RSP["robot_state_publisher"]
@@ -39,6 +44,8 @@ flowchart LR
   B <-- "WebSocket (roslibjs)" --> RB
   RB <-- "/workflow/*" --> EX
   RB <-- "/workflow/library*" --> ST
+  RB <-- "/workflow/generate*" --> AI
+  AI & EX -. "HTTPS (AI 비전 판단·시나리오)" .-> C["Claude API"]
   EX -- "시뮬레이션 실행" --> SIM
   M -. "쉬는 동안 자세 복사" .-> SIM
   RB <-- "/episode/*" --> REC
@@ -55,12 +62,14 @@ flowchart LR
 |---|---|
 | `robots/<이름>/` | 로봇 프로파일: `robot.yaml`(관절, 액션, 모의 여부, 녹화 토픽) + URDF |
 | `ros/workflow_executor.py` | 그래프를 걷는 실행기: 출력 포트별 진행, 병렬 갈래, 합류, 실제/시뮬레이션 모드 (노드 타입을 모름) |
-| `ros/nodes/` | 노드 타입 플러그인: `motion`(MoveJ), `flow`(대기·조건 분기·반복·합류), `topics`(그리퍼, 고급: 신호 대기/토픽 발행), `episode`(녹화 시작/종료) |
+| `ros/nodes/` | 노드 타입 플러그인: `motion`(MoveJ), `flow`(대기·조건 분기·반복·합류), `vision`(AI 비전 판단), `topics`(그리퍼, 고급: 신호 대기/토픽 발행), `episode`(녹화 시작/종료) |
+| `ros/ai_client.py` | Claude 호출 한 곳 (모델·오류 메시지). 비전 판단과 시나리오 생성이 같이 씀 |
+| `ros/scenario.py`, `ros/scenario_ai.py` | AI 시나리오 생성: 노드 목록 → 프롬프트, 결과 검사·보정(`validate`) / ROS 노드 |
 | `ros/workflow_store.py` | 워크플로 저장소 (GB10 `data/workflows/`) |
 | `ros/recorder.py` | 에피소드 녹화기 (rosbag2) |
 | `ros/mock_arm.py` | 모의 팔 (`/joint_states` + `FollowJointTrajectory`). `/sim`에 하나 더 띄워 디지털 트윈 팔로 씀 |
 | `ros/bringup.launch.py` | 프로파일을 읽어 필요한 노드만 기동 |
-| `ros/smoke_test.py` | 통합 테스트 (CI에서도 실행) |
+| `ros/smoke_test.py`, `ros/test_ai.py` | 통합 테스트 / AI 부분 단위 테스트 (API 키 없이, CI에서도 실행) |
 | `web/` | React + React Flow + three.js/urdf-loader + roslib |
 | `data/episodes/`, `data/workflows/` | 녹화 결과, 저장된 워크플로 (git 제외) |
 | `TASKS.md` | 진행 체크리스트 / 로드맵 |
@@ -112,11 +121,11 @@ WSL 미러 네트워킹에서는 DDS 디스커버리가 막히므로 `export FAS
 `ros/nodes/`에 파일 하나를 추가하고 `docker compose restart ros` 하면 웹 팔레트에 나타납니다.
 
 ```python
-# ros/nodes/vision.py
+# ros/nodes/inspection.py
 from std_msgs.msg import String
 from nodes import field, node
 
-GROUP = '비전'   # 팔레트 분류 (같은 분류 = 같은 색)
+GROUP = '검사'   # 팔레트 분류 (같은 분류 = 같은 색)
 ICON = 'vision'  # 분류 아이콘: arm | flow | device | data | vision
 ORDER = 3        # 팔레트에서 분류 순서
 
@@ -177,12 +186,23 @@ docker compose run --rm ai python convert_lerobot.py /data/episodes --out /data/
 | 흐름 | 조건 분기 | 신호(토픽) 값을 보고 **예/아니오**로 갈라짐 | 지정한 방향(고급 설정)으로 |
 | 흐름 | 반복 | **반복** 쪽으로 N번 보낸 뒤 **완료** 쪽으로 | 그대로 |
 | 흐름 | 합류 | 병렬 갈래가 모두 도착하면 한 번 진행 | 그대로 |
+| AI 인식 | AI 비전 판단 | 카메라 영상을 보고 질문에 **예/아니오**. 확신이 낮으면 정지(또는 아니오로 처리, 고급 설정) | AI를 부르지 않고 지정한 답(고급 설정)으로 |
 | 장비 연동 | 그리퍼 | 열기/닫기 (프로파일의 `gripper_topic`) | 보내지 않음 |
 | 장비 연동 (고급) | 신호 대기, 토픽 발행 | ROS 토픽을 직접 다룸 | 통과 / 보내지 않음 |
 | 데이터 수집 | 에피소드 시작 / 종료 | 녹화 구간 지정 + 작업 설명, 결과(success/fail) | 녹화하지 않음 |
 
 한 출력에 여러 단계를 연결하면 동시에 실행되고(병렬), 앞 단계로 되돌아가는 연결은 반복입니다(반복 노드의 횟수 또는 정지 버튼까지).
 연결은 핸들을 끌어도 되고, 노드를 선택해 인스펙터의 '다음 단계'에서 골라도 됩니다(키보드·터치).
+
+## AI: 비전 판단과 시나리오 만들기
+
+GB10의 `.env`에 API 키를 넣고 `docker compose up -d` 하면 켜집니다 (키는 저장소에 넣지 않습니다).
+```bash
+echo "ANTHROPIC_API_KEY=sk-ant-..." >> .env
+```
+- **AI 비전 판단** 노드: `camera_topic`(또는 노드의 고급 설정 '카메라 토픽')에서 최신 한 장을 받아 질문과 함께 Claude(`claude-opus-5-5`)에 보냅니다. 답은 `예/아니오 + 확신(높음·보통·낮음) + 근거`이고, 근거는 '기록' 탭에 남습니다. 확신이 낮으면 기본은 정지(현장에서 사람이 확인), 고급 설정에서 '아니오로 처리'로 바꿀 수 있습니다. 판단 한 번에 수 초가 걸리므로 고속 라인 검사가 아니라 "작업 전에 상황 확인" 용도입니다.
+- **AI로 만들기** (문서 바): 작업을 말로 설명하면 지금 실행기에 있는 노드 타입만으로 워크플로를 만듭니다. 없는 장비는 만들어 내지 않고, 모르는 자세는 0으로 두고 경고로 알려 줍니다. 결과는 바로 실행하지 않고 편집기로 불러와 사람이 자세를 티칭하고 시뮬레이션으로 검증한 뒤 실행합니다.
+- 키가 없거나 인터넷이 막혀 있으면 노드는 이유를 보여 주며 오류로 멈추고, 나머지 기능은 그대로 동작합니다. 인터넷이 없는 공장이면 로컬 VLM(vLLM 등)으로 `ros/ai_client.py` 한 곳만 바꾸면 됩니다 (`TASKS.md`).
 
 ## 만들기 → 반영 → 시뮬레이션 → 실행
 

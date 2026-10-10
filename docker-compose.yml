@@ -12,6 +12,7 @@ services:
       - ./data:/data        # 녹화된 에피소드: data/episodes/
     environment:
       - ROS_DOMAIN_ID=${ROS_DOMAIN_ID:-0}
+      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY:-}   # AI 비전 판단·시나리오 생성. .env 에 넣는다 (repo에 넣지 않음)
     command: ros2 launch /ros/bringup.launch.py robot:=${ROBOT:-demo_arm}
     # ros2 launch는 SIGINT로 멈춰야 하위 노드에 종료를 전달한다 → 녹화 중이던 bag도 정상 마무리됨
     stop_signal: SIGINT

@@ -79,7 +79,7 @@ export default function Viewer({ stale, ghost, followCommand, simRun, large }) {
     robotDescription.subscribe(onUrdf)
 
     const resize = () => {
-      renderer.setSize(el.clientWidth, el.clientHeight)
+      renderer.setSize(el.clientWidth, el.clientHeight, false) // CSS 크기는 app.css가 정함
       camera.aspect = el.clientWidth / Math.max(el.clientHeight, 1)
       camera.updateProjectionMatrix()
     }
