@@ -81,6 +81,8 @@ export function CameraView({ topic, list, compact }) {
       else g.drawImage(image, 0, 0)
     }
     const { feed, leave } = feeds.join(topic, type, draw)
+    // 이미 다른 화면이 보고 있던 카메라면 마지막 프레임과 상태를 바로 (fps는 1초 뒤 갱신)
+    if (feed.last && performance.now() - feed.last < STALE) setSt({ state: 'live', text: `연결됨 · ${feed.info}` })
     let prev = { frames: feed.frames, at: performance.now() }
     // 상태는 1초에 한 번만 갱신 (프레임마다 다시 그리지 않게). 통계는 같은 카메라를 보는 화면끼리 공유
     const tick = setInterval(() => {

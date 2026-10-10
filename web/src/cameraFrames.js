@@ -38,17 +38,19 @@ export function rawToRgba({ width, height, step, encoding, data }) {
 // open(name, type, onMessage) → close(): 실제 구독 (Camera.jsx는 roslib Topic)
 // decode(msg, type) → Promise<{ image, width, height, info }>: image는 ImageBitmap(close 가능) 또는 ImageData
 // 디코딩이 끝나기 전에 온 프레임은 건너뛴다. 2초 넘게 안 끝나면(백그라운드 탭 등) 묶여 있지 않게 다음 프레임을 받는다
+// 마지막 프레임은 들고 있다가, 나중에 같은 카메라를 여는 화면에 바로 그린다 (마지막 화면이 닫히면 버림 → 오래된 화면을 실시간처럼 보여 주지 않음)
 export function createFeeds(open, decode, now = () => performance.now()) {
   const feeds = new Map()
   const start = (name, type) => {
-    const f = { views: new Set(), frames: 0, last: 0, info: '', err: '', busy: 0, started: now() }
+    const f = { views: new Set(), frames: 0, last: 0, info: '', err: '', busy: 0, started: now(), latest: null }
     f.close = open(name, type, async (m) => {
       if (f.busy && now() - f.busy < 2000) return
       f.busy = now()
       try {
         const frame = await decode(m, type)
         for (const draw of f.views) draw(frame)
-        frame.image.close?.()
+        f.latest?.image.close?.() // 이전 프레임 정리, 새 프레임은 들고 있음
+        f.latest = frame
         f.frames += 1
         f.last = now()
         f.info = frame.info
@@ -67,11 +69,17 @@ export function createFeeds(open, decode, now = () => performance.now()) {
     join(name, type, draw) {
       const f = feeds.get(name) ?? start(name, type)
       f.views.add(draw)
+      if (f.latest) draw(f.latest) // 이미 다른 화면이 보고 있던 카메라: 기다리지 않고 마지막 프레임부터
       return {
         feed: f,
         leave() {
           f.views.delete(draw)
-          if (!f.views.size && feeds.get(name) === f) { f.close(); feeds.delete(name) }
+          if (!f.views.size && feeds.get(name) === f) {
+            f.close()
+            f.latest?.image.close?.()
+            f.latest = null
+            feeds.delete(name)
+          }
         },
       }
     },

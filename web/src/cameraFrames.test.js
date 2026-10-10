@@ -32,15 +32,24 @@ const b = feeds.join('/cam', 'sensor_msgs/msg/CompressedImage', (f) => seenB.pus
 assert.equal(opened.length, 1)
 assert.equal(a.feed, b.feed)
 await opened[0].cb({ id: 1 })
-assert.deepEqual([seenA, seenB, decodes, closedImages], [[1], [1], 1, 1]) // 다 그린 뒤 ImageBitmap 정리
+assert.deepEqual([seenA, seenB, decodes, closedImages], [[1], [1], 1, 0]) // 마지막 프레임은 들고 있음
 assert.equal(a.feed.frames, 1)
+// 나중에 여는 화면은 기다리지 않고 마지막 프레임부터 (디코딩·구독 추가 없음)
+const seenLate = []
+const late = feeds.join('/cam', 'sensor_msgs/msg/CompressedImage', (f) => seenLate.push(f.image.id))
+assert.deepEqual([seenLate, decodes, opened.length], [[1], 1, 1])
+late.leave()
 // 한 화면이 닫혀도 다른 화면은 계속, 둘 다 닫히면 구독 해제
 a.leave()
 assert.equal(opened[0].closed, false)
 await opened[0].cb({ id: 2 })
-assert.deepEqual([seenA, seenB], [[1], [1, 2]])
+assert.deepEqual([seenA, seenB, closedImages], [[1], [1, 2], 1]) // 새 프레임이 오면 이전 프레임 정리
 b.leave()
 assert.equal(opened[0].closed, true)
+assert.equal(closedImages, 2) // 마지막 화면이 닫히면 들고 있던 프레임도 정리
+const fresh = []
+feeds.join('/cam', 'sensor_msgs/msg/CompressedImage', (f) => fresh.push(f)).leave()
+assert.deepEqual(fresh, []) // 다시 열면 새로 구독, 지난 프레임은 보여 주지 않음
 assert.equal(feeds.count(), 0)
 // 디코딩 중에 온 프레임은 건너뜀
 let release
