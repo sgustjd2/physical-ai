@@ -5,6 +5,7 @@ import {
 import { AIBuilder } from './AIBuilder'
 import { anchorOf, BlockPicker } from './BlockPicker'
 import { Hint } from './Hint'
+import { createHistory } from './history'
 import { Icon } from './icons'
 import { LibraryMenu } from './Library'
 import {
@@ -148,8 +149,9 @@ export default function App() {
     const specs = Object.fromEntries(specList.map((s) => [s.type, s]))
     const groups = [...new Set(specList.map((s) => s.group || '기타'))]
     const colorOf = (type) => (type === 'start' ? 'var(--text)'
-      : specs[type] ? `var(--cat-${(groups.indexOf(specs[type].group || '기타') % CATEGORY_COLORS) + 1})` : 'var(--warn)')
-    return { specs, colorOf }
+      : specs[type] ? `var(--cat-${(groups.indexOf(specs[type].group || '기타') % CATEGORY_COLORS) + 1})`
+      : specList.length ? 'var(--warn)' : 'var(--muted)') // 목록을 아직 못 받았으면 경고색 대신 중립색
+    return { specs, colorOf, loaded: specList.length > 0 }
   }, [specList])
   const { specs, colorOf } = specCtx
   const specOf = (type) => (type === 'start' ? START : specs[type])
@@ -196,6 +198,27 @@ export default function App() {
   useEffect(() => store.set('workflow.name', name), [name])
   useEffect(() => store.set('workflow.savedSnap', savedSnap), [savedSnap])
   useEffect(() => store.set('view', view), [view])
+
+  // 되돌리기/다시 하기 (history.js): 그래프·이름의 변화를 여기 한 곳에서 기록하므로 편집 동작마다 기록 코드가 필요 없다
+  const histKey = useMemo(() => JSON.stringify({ g: toGraph(nodes, edges), name }), [nodes, edges, name])
+  const histSig = useMemo(() => `${nodes.map((n) => n.id)}|${edges.map((e) => e.id)}`, [nodes, edges])
+  const history = useState(() => createHistory(histKey))[0]
+  const [, setHistVer] = useState(0)
+  useEffect(() => { history.change(histKey, histSig, performance.now()) }, [history, histKey, histSig])
+  const canUndo = history.canUndo || histKey !== history.last
+  const canRedo = history.canRedo && histKey === history.last
+  const restore = (key) => {
+    if (!key) return
+    const { g, name: nm } = JSON.parse(key)
+    const cur = new Map(nodes.map((n) => [n.id, n]))
+    // 크기·선택은 지금 값을 이어 써서 다시 측정하는 동안 깜빡이지 않게
+    setNodes(g.nodes.map((n) => ({ ...n, measured: cur.get(n.id)?.measured, selected: !!cur.get(n.id)?.selected })))
+    setEdges(g.edges)
+    setName(nm)
+    setHistVer((v) => v + 1)
+  }
+  const undo = () => restore(history.undo())
+  const redo = () => restore(history.redo())
 
   // Esc = 정지 (실행 중일 때). 정지는 언제 눌려도 안전한 방향이라 입력 중이어도 받는다
   useEffect(() => {
@@ -267,7 +290,23 @@ export default function App() {
     test: (id) => testNode(byId.get(id)),
     duplicate,
     remove: (id) => deleteElements({ nodes: [{ id }] }),
+    undo,
+    redo,
   })
+
+  // Ctrl+Z 되돌리기, Ctrl+Shift+Z·Ctrl+Y 다시 하기. 한글 입력 상태에서도 되도록 물리 키(code)로 본다.
+  // 입력칸에 글자를 쓰는 중에는 브라우저 기본(입력칸 글자 되돌리기)에 맡긴다
+  useEffect(() => {
+    const onKey = (e) => {
+      if (!(e.ctrlKey || e.metaKey) || e.altKey || e.target.closest?.('input, textarea, select, [contenteditable="true"]')) return
+      if (e.code !== 'KeyZ' && e.code !== 'KeyY') return
+      e.preventDefault()
+      if (e.code === 'KeyY' || e.shiftKey) actions.redo()
+      else actions.undo()
+    }
+    addEventListener('keydown', onKey)
+    return () => removeEventListener('keydown', onKey)
+  }, [actions])
 
   // 한 출력에서 여러 단계로 연결하면 병렬 실행 (같은 연결 중복만 막는다)
   const onConnect = (c) => setEdges((es) => addEdge({ ...c, id: `${c.source}-${c.sourceHandle || 'out'}-${c.target}` }, es))
@@ -489,9 +528,17 @@ export default function App() {
                         onClick={(e) => setPicker({ anchor: anchorOf(e.currentTarget), at: null, title: editing ? '선택한 단계 뒤에 추가' : '블록 추가' })}>
                         <Icon name="plus" />블록 추가
                       </button>
+                      <span className="add-sep" aria-hidden="true" />
+                      <button className="icon-btn" onClick={undo} disabled={!canUndo} aria-label="되돌리기" title="되돌리기 (Ctrl+Z)" aria-keyshortcuts="Control+Z">
+                        <Icon name="undo" />
+                      </button>
+                      <button className="icon-btn" onClick={redo} disabled={!canRedo} aria-label="다시 하기" title="다시 하기 (Ctrl+Shift+Z)" aria-keyshortcuts="Control+Shift+Z Control+Y">
+                        <Icon name="redo" />
+                      </button>
                       <Hint label="블록 추가·연결 방법">
                         노드 아래의 + 를 누르면 그 다음에, 연결선 가운데의 + 를 누르면 그 사이에 블록을 넣습니다. 점을 끌어 다른 단계에 이으면 연결되고,
                         한 출력에 여러 단계를 이으면 동시에 실행됩니다(합류 노드에서 다시 모임). 선택한 노드 위 버튼으로 시험·복제·삭제하고, Delete 키로도 지웁니다.
+                        잘못 바꿨으면 Ctrl+Z(되돌리기), Ctrl+Shift+Z(다시 하기).
                       </Hint>
                     </Panel>
                     {editing && (

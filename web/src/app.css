@@ -469,6 +469,9 @@ aside .table-wrap, aside .log-list { max-height: none; overflow: visible; }
 /* 블록 추가 버튼 + 블록 선택 창 (Dify 블록 선택 참고) */
 .add-panel { display: flex; align-items: center; gap: 2px; padding: 3px 4px 3px 3px; background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius-lg); box-shadow: var(--shadow); }
 .add-block { gap: 6px; background: var(--accent-strong); border-color: var(--accent-strong); color: var(--on-accent); font-weight: 600; }
+.add-panel .icon-btn { background: transparent; border-color: transparent; }
+.add-panel .icon-btn:hover:not(:disabled) { background: var(--surface-2); }
+.add-sep { width: 1px; height: 20px; margin: 0 4px; background: var(--border); }
 .add-block:hover:not(:disabled) { background: color-mix(in srgb, var(--accent-strong) 86%, #000); border-color: transparent; }
 .picker {
   position: fixed;

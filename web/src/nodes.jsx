@@ -4,11 +4,12 @@
 // 추가·삭제는 Dify 편집기 방식: 출력 점의 + (다음 블록), 연결선 가운데 + (사이에 끼우기), 선택한 노드 위 툴바.
 import { createContext, useContext, useState } from 'react'
 import { BaseEdge, EdgeLabelRenderer, getSmoothStepPath, Handle, NodeToolbar, Position, useReactFlow } from '@xyflow/react'
+import { Hint } from './Hint'
 import { Icon } from './icons'
 import { currentDeg, moveTo } from './ros'
 
-// { specs: type→spec, colorOf: type→CSS 색 } — 분류(group)마다 색 하나
-export const Specs = createContext({ specs: {}, colorOf: () => 'var(--muted)' })
+// { specs: type→spec, colorOf: type→CSS 색, loaded: 블록 목록을 한 번이라도 받았는지 } — 분류(group)마다 색 하나
+export const Specs = createContext({ specs: {}, colorOf: () => 'var(--muted)', loaded: false })
 export const JointNames = createContext([]) // 로봇 프로파일의 관절 순서
 // 노드·연결선에서 부르는 편집 동작 (App이 채움): openPicker(버튼, {source, port} | {edge}), test, duplicate, remove
 export const NodeActions = createContext({})
@@ -35,13 +36,13 @@ const summary = (f, v) => {
 }
 
 export function FlowNode({ id, type, data, selected, dragging }) {
-  const { specs, colorOf } = useContext(Specs)
+  const { specs, colorOf, loaded } = useContext(Specs)
   const act = useContext(NodeActions)
   const spec = type === 'start' ? START : specs[type]
   const outs = outputsOf(spec)
   const labeled = outs.length > 1 || outs[0].label
   return (
-    <div className={`node node-${type}${spec ? '' : ' unknown'}`} style={{ '--cat': colorOf(type) }}>
+    <div className={`node node-${type}${spec || !loaded ? '' : ' unknown'}`} style={{ '--cat': colorOf(type) }}>
       {type !== 'start' && (
         <NodeToolbar isVisible={selected && !dragging} position={Position.Top} align="end" className="node-toolbar">
           <button className="icon-btn" onClick={() => act.test(id)} disabled={!spec} title="이 단계만 시뮬레이션" aria-label="이 단계만 시뮬레이션"><Icon name="sim" /></button>
@@ -53,11 +54,11 @@ export function FlowNode({ id, type, data, selected, dragging }) {
       <div className="node-head">
         <span className="node-icon" aria-hidden="true">{spec?.icon ? <Icon name={spec.icon} size={14} /> : <span className="node-dot" />}</span>
         <span className="node-title">{data.title || (spec?.label ?? type)}</span>
-        {type !== 'start' && <span className="node-type" translate="no">{data.title ? spec?.label ?? type : type}</span>}
+        {type !== 'start' && (spec || data.title) && <span className="node-type" translate="no">{data.title ? spec?.label ?? type : type}</span>}
       </div>
       {(!spec || spec.fields.length > 0) && (
         <div className="node-body">
-          {!spec && <div className="node-sum warn-text">이 서버에 없는 노드 타입</div>}
+          {!spec && <div className={`node-sum${loaded ? ' warn-text' : ''}`}>{loaded ? '서버에 없는 블록' : '블록 정보 대기 중'}</div>}
           {spec?.fields.filter((f) => !f.advanced).slice(0, 2).map((f) => <div key={f.key} className="node-sum">{summary(f, data[f.key])}</div>)}
         </div>
       )}
@@ -177,7 +178,7 @@ function NextSteps({ node, spec, links, options, onAdd, onRemove }) {
 }
 
 export function Inspector({ node, onClose, links, options, onAddLink, onRemoveLink }) {
-  const { specs, colorOf } = useContext(Specs)
+  const { specs, colorOf, loaded } = useContext(Specs)
   const act = useContext(NodeActions)
   const { updateNodeData } = useReactFlow()
   const spec = node.type === 'start' ? START : specs[node.type]
@@ -200,7 +201,16 @@ export function Inspector({ node, onClose, links, options, onAddLink, onRemoveLi
       </div>
       <div className="inspector-body">
         {spec?.desc && <p className="hint-text">{spec.desc}</p>}
-        {!spec && <p className="warn-text">이 서버에 없는 노드 타입입니다. 실행기에 해당 플러그인(ros/nodes)이 있는지 확인하세요.</p>}
+        {!spec && (
+          <div className="field-head">
+            <span className={loaded ? 'warn-text' : 'muted'}>{loaded ? '서버에 없는 블록입니다' : '블록 정보를 기다리는 중입니다'}</span>
+            <Hint label="자세히">
+              {loaded
+                ? <>실행기의 <code>ros/nodes</code>에 <code translate="no">{node.type}</code> 블록이 없습니다. 다른 서버에서 만든 워크플로이거나 플러그인이 빠졌을 수 있습니다.</>
+                : '실행기에 연결되면 이 블록의 이름과 설정 항목이 나타납니다.'}
+            </Hint>
+          </div>
+        )}
         {basic.map((f) => <Field key={f.key} id={node.id} data={node.data} f={f} />)}
         {advanced.length > 0 && (
           <details className="advanced">
