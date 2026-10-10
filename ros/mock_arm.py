@@ -11,7 +11,7 @@ import rclpy
 from control_msgs.action import FollowJointTrajectory
 from rclpy.action import ActionServer, CancelResponse, GoalResponse
 from rclpy.callback_groups import ReentrantCallbackGroup
-from rclpy.executors import MultiThreadedExecutor
+from rclpy.executors import ExternalShutdownException, MultiThreadedExecutor
 from rclpy.node import Node
 from sensor_msgs.msg import JointState
 
@@ -64,7 +64,10 @@ class MockArm(Node):
 
 def main():
     rclpy.init()
-    rclpy.spin(MockArm(), executor=MultiThreadedExecutor())
+    try:
+        rclpy.spin(MockArm(), executor=MultiThreadedExecutor())
+    except (KeyboardInterrupt, ExternalShutdownException):
+        pass
 
 
 if __name__ == '__main__':

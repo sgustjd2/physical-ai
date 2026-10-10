@@ -61,6 +61,22 @@ aside {
 .jog-row { display: grid; grid-template-columns: 1fr 36px 72px 36px; align-items: center; gap: 6px; margin-bottom: 4px; }
 .jog-row button { padding: 4px 0; }
 .jog-row output { text-align: right; font-variant-numeric: tabular-nums; }
+.panel .row { display: flex; gap: 6px; }
+.panel .row > * { flex: 1; }
+.panel .row input + button { flex: none; }
+.rec { color: var(--danger); font-weight: 600; font-variant-numeric: tabular-nums; }
+.episodes { list-style: none; margin: 8px 0 0; padding: 0; max-height: 180px; overflow-y: auto; font-size: 12px; }
+.episodes li {
+  display: grid; grid-template-columns: 1fr auto 52px; gap: 8px; padding: 3px 0;
+  border-top: 1px solid var(--border);
+}
+.episodes li span:first-child { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.episodes li span:last-child { text-align: right; color: var(--muted); font-variant-numeric: tabular-nums; }
+.result { color: var(--warn); }
+.result.success { color: var(--ok); }
+.result.fail, .result.error { color: var(--danger); }
+.panel .bad { margin: 6px 0 0; font-size: 12px; }
+.node.unknown { border-color: var(--warn); }
 .topics pre {
   margin: 8px 0 0; max-height: 240px; overflow: auto; font-size: 12px;
   background: var(--bg); padding: 6px; border-radius: 4px; white-space: pre-wrap;

@@ -9,7 +9,17 @@
 - [x] `docker-compose.yml` — GB10에서 `docker compose up` 한 번으로 전체 기동
 - [x] 로컬 end-to-end 검증 (WSL + pixi/RoboStack ROS2: `smoke_test.py` 통과, 브라우저 실행/정지/조그/토픽 모니터 확인)
 - [x] README (아키텍처, 실행법, 로드맵), 첫 커밋 & push
-- [ ] GB10 실기에서 `docker compose up` 확인 (arm64 이미지 빌드, host 네트워크)
+- [ ] GB10 실기에서 `docker compose up` 확인 (arm64 이미지 빌드, host 네트워크) — amd64 Docker 경로는 CI가 검증
+
+## Phase 1.5 — 확장 구조 + 에피소드 녹화
+- [x] 로봇 프로파일 `robots/<이름>/` (robot.yaml + URDF) — 로봇이 바뀌면 이 폴더만 추가, 코드 수정 없음
+- [x] 웹은 로봇 무관하게: URDF를 `/robot_description` 토픽에서 받음 (web/public/robot.urdf 제거)
+- [x] 노드 타입 플러그인 `ros/nodes/*.py` — 노드가 자기 UI 필드를 선언, 웹은 자동 생성 (새 노드 = 파이썬 파일 하나)
+- [x] `ros/recorder.py` — rosbag2(mcap)로 에피소드 녹화, `data/episodes/<시간>_<작업>/` (bag + episode.json)
+- [x] 워크플로 노드 `에피소드 시작/종료` + 실행이 끝나면 녹화 자동 종료, 이동 명령을 `/workflow/command`로 발행해 함께 기록
+- [x] 웹 에피소드 패널 (작업 설명, 녹화 시작, 성공/실패로 종료, 최근 목록)
+- [x] smoke_test에 녹화 검증 추가 + GitHub Actions CI (웹 빌드 + ROS 스모크 테스트)
+- [x] README: 새 로봇 / 새 노드 타입 / 녹화 방법
 
 ## Phase 2 — 실제 현장 투입
 - [ ] 개발용 저가 팔(SO-101 / ROBOTIS OMX)로 실물 루프 먼저 검증 — mock_arm 다음 단계, 산업용 팔 전에 리스크 낮추기
@@ -21,7 +31,6 @@
 
 ## Phase 3 — Physical AI 데이터 루프 (수집 → 학습 → 실행)
 참고: 패스트캠퍼스 "Physical AI 로봇 제어 올인원" 커리큘럼 (Isaac Sim → ROS2 텔레옵 → 데이터 수집 → LeRobot/SmolVLA)
-- [ ] 에피소드 녹화: 워크플로 실행/텔레옵 중 `/joint_states`·카메라·명령을 타임스탬프 동기화해 기록 (rosbag2) — 워크플로 시작/끝 = 에피소드 경계
 - [ ] rosbag → LeRobot Dataset v3 변환, Replayer로 관측·행동 검증
 - [ ] Rerun으로 에피소드 시간축 확인 (웹에 Rerun 뷰어 임베드)
 - [ ] 리더-팔로워 텔레옵 (리더 팔로 시연 → 팔로워/실제 팔) — 데모 수집 입력 장치

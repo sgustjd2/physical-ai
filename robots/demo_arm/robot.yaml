@@ -1,0 +1,23 @@
+# 로봇 프로파일. 로봇(또는 작업 셀)이 바뀌면 robots/<이름>/ 폴더를 새로 만들고 ROBOT=<이름> 으로 고른다.
+# 코드(ros/, web/)는 수정하지 않는다.
+
+# 팔 관절 이름 (순서 = 웹 MoveJ의 J1..Jn). 드라이버의 /joint_states 이름과 같아야 함
+joints: [joint1, joint2, joint3, joint4, joint5, joint6]
+
+# 팔 드라이버의 FollowJointTrajectory 액션 (ros2_control joint_trajectory_controller 표준)
+trajectory_action: /arm_controller/follow_joint_trajectory
+
+# true면 드라이버 대신 모의 팔(ros/mock_arm.py)을 띄운다
+mock: true
+
+# 있으면 robot_state_publisher가 /robot_description 으로 발행하고 웹 3D 뷰어가 그것을 그린다.
+# 제조사 드라이버가 직접 /robot_description 을 발행하면 이 줄을 지운다.
+urdf: robot.urdf
+
+# 에피소드 녹화 대상 토픽. 카메라를 달면 여기에 추가 (예: /camera/color/image_raw/compressed)
+record_topics:
+  - /joint_states
+  - /workflow/command
+  - /workflow/status
+  - /tf
+  - /tf_static

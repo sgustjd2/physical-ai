@@ -1,15 +1,21 @@
 # GB10(DGX OS, arm64)에서:  docker compose up -d --build   →  http://<GB10 IP>:8080
+# 로봇 고르기: .env 에 ROBOT=<robots/ 아래 폴더 이름>  (기본 demo_arm = 모의 팔)
 services:
   ros:
     build: ./ros
     # DDS(ROS2 통신)가 같은 네트워크의 실제 로봇/다른 PC와 통하려면 host 네트워크가 필요. rosbridge는 :9090
     network_mode: host
     ipc: host
-    volumes: ["./ros:/ros"]
+    volumes:
+      - ./ros:/ros
+      - ./robots:/robots
+      - ./data:/data        # 녹화된 에피소드: data/episodes/
     environment:
       - ROS_DOMAIN_ID=${ROS_DOMAIN_ID:-0}
-    # 실제 팔: .env 에 LAUNCH_ARGS=mock:=false trajectory_action:=/... joints:=[a,b,c]  (리스트 안에 공백 없이)
-    command: bash -c "ros2 launch /ros/bringup.launch.py ${LAUNCH_ARGS:-}"
+    command: ros2 launch /ros/bringup.launch.py robot:=${ROBOT:-demo_arm}
+    # ros2 launch는 SIGINT로 멈춰야 하위 노드에 종료를 전달한다 → 녹화 중이던 bag도 정상 마무리됨
+    stop_signal: SIGINT
+    stop_grace_period: 30s
     restart: unless-stopped
 
   web:

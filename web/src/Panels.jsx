@@ -1,6 +1,54 @@
-// 오른쪽 패널: 조그(관절 단위 수동 이동) + 토픽 모니터(아무 ROS 토픽이나 실시간 보기)
+// 오른쪽 패널: 조그(관절 단위 수동 이동), 에피소드 녹화, 토픽 모니터(아무 ROS 토픽이나 실시간 보기)
 import { useEffect, useState } from 'react'
-import { currentDeg, moveTo, ros, topic } from './ros'
+import { currentDeg, moveTo, ros, sendEpisode, topic } from './ros'
+
+// 수동 녹화(조그·텔레옵 시연)용. 워크플로 안에서는 '에피소드 시작/종료' 노드를 쓴다
+export function Episodes({ episode, connected }) {
+  const [task, setTask] = useState('')
+  const [, tick] = useState(0)
+  const rec = episode.recording
+  useEffect(() => {
+    if (!rec) return
+    const t = setInterval(() => tick((x) => x + 1), 500)
+    return () => clearInterval(t)
+  }, [rec])
+  const elapsed = rec ? ((Date.now() - Date.parse(episode.current?.started)) / 1000).toFixed(0) : 0
+  const stop = (result) => sendEpisode('stop', { result })
+  return (
+    <section className="panel">
+      <h3>에피소드 녹화 {rec && <span className="rec">● REC {elapsed}s</span>}</h3>
+      {rec ? (
+        <>
+          <p className="muted">{episode.current?.task || '(작업 설명 없음)'}</p>
+          <div className="row">
+            <button onClick={() => stop('success')}>성공으로 종료</button>
+            <button onClick={() => stop('fail')}>실패로 종료</button>
+          </div>
+        </>
+      ) : (
+        <div className="row">
+          <input placeholder="작업 설명 (예: 빨간 블록을 상자에 넣기)" value={task}
+            onChange={(e) => setTask(e.target.value)} aria-label="작업 설명" />
+          <button disabled={!connected} onClick={() => sendEpisode('start', { task, meta: { source: 'manual' } })}>
+            녹화
+          </button>
+        </div>
+      )}
+      {episode.error && <p className="bad">{episode.error}</p>}
+      {!!episode.episodes?.length && (
+        <ul className="episodes">
+          {episode.episodes.map((e) => (
+            <li key={e.name} title={e.name}>
+              <span>{e.task || e.name}</span>
+              <span className={`result ${e.result}`}>{e.result}</span>
+              <span>{e.duration?.toFixed(1)}s</span>
+            </li>
+          ))}
+        </ul>
+      )}
+    </section>
+  )
+}
 
 export function Jog({ names, disabled }) {
   const [step, setStep] = useState(5)

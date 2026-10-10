@@ -1,0 +1,29 @@
+# 업데이트가 기존 기능을 깨지 않는지 매 push/PR마다 확인: 웹 빌드 + ROS 스택(Docker) 스모크 테스트
+name: ci
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  web:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+      - run: npm ci && npm run build
+        working-directory: web
+
+  ros:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: docker compose up -d --build ros
+      - name: smoke test (워크플로 실행, 정지, 오류, 에피소드 녹화)
+        run: docker compose exec -T ros bash -c "source /opt/ros/jazzy/setup.bash && cd /ros && python3 smoke_test.py"
+      - if: always()
+        run: docker compose logs --tail 150 ros

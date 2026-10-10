@@ -1,12 +1,9 @@
-// URDF 로봇을 three.js로 그리고 매 프레임 /joint_states 최신값을 반영한다.
+// /robot_description(URDF)을 three.js로 그리고 매 프레임 /joint_states 최신값을 반영한다. 로봇이 바뀌어도 코드 그대로.
 import { useEffect, useRef } from 'react'
 import * as THREE from 'three'
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js'
 import URDFLoader from 'urdf-loader'
-import { latest } from './ros'
-
-// ponytail: 정적 URDF(public/robot.urdf). 실제 팔은 제조사 URDF로 교체하거나 /robot_description 구독으로 바꿀 것
-const URDF_URL = '/robot.urdf'
+import { latest, robotDescription } from './ros'
 
 export default function Viewer() {
   const ref = useRef()
@@ -30,11 +27,14 @@ export default function Viewer() {
     controls.target.set(0, 0.45, 0)
 
     let robot
-    new URDFLoader().load(URDF_URL, (r) => {
-      robot = r
-      r.rotation.x = -Math.PI / 2 // ROS는 Z-up, three.js는 Y-up
-      scene.add(r)
-    })
+    // ponytail: 기본 도형 URDF만 그려짐. package:// 메시는 메시 파일을 HTTP로 서빙하고 loader.packages 를 지정해야 함
+    const onUrdf = (m) => {
+      if (robot) scene.remove(robot)
+      robot = new URDFLoader().parse(m.data)
+      robot.rotation.x = -Math.PI / 2 // ROS는 Z-up, three.js는 Y-up
+      scene.add(robot)
+    }
+    robotDescription.subscribe(onUrdf)
 
     const resize = () => {
       renderer.setSize(el.clientWidth, el.clientHeight)
@@ -54,6 +54,7 @@ export default function Viewer() {
     loop()
 
     return () => {
+      robotDescription.unsubscribe(onUrdf)
       cancelAnimationFrame(raf)
       ro.disconnect()
       controls.dispose()
