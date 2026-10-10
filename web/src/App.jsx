@@ -566,12 +566,11 @@ export default function App() {
               <Icon name="estop" size={20} />{estop ? '비상정지 중' : '비상정지'}
             </button>
           </header>
-          {/* 알림 영역: 좁은 화면에서 페이지를 내려도 위에 붙어 보이게 (app.css .alerts) */}
+          {/* 비상정지 띠만 맨 위에 고정 (안전 잠금은 스크롤해도 보여야 함). 일반 알림은 편집 영역 안, 캔버스 위에 자리를 차지해 캔버스를 가리지 않는다 */}
           <div className="alerts">
             <EstopBanner on={estop} connected={connected} onRelease={() => setEstop(false)} />
-            <ConnectionBanner connected={connected} everConnected={everConnected} url={url} />
-            <Notice notice={notice} onClose={closeNotice} />
           </div>
+          <ConnectionBanner connected={connected} everConnected={everConnected} url={url} />
           <main>
             <section className="workspace" id="workspace" tabIndex={-1} aria-label="워크플로">
               <div className="docbar">
@@ -603,6 +602,7 @@ export default function App() {
                 </button>
                 <input ref={fileRef} type="file" accept=".json,application/json" hidden onChange={importJson} />
               </div>
+              <Notice notice={notice} onClose={closeNotice} />
               {view === 'twin' ? (
                 <div className="twin">
                   {viewer}

@@ -255,8 +255,9 @@ input:focus-visible, select:focus-visible, textarea:focus-visible { outline-offs
 .runstat.stopped .runstat-bar i.now { background: var(--warn); }
 .runstat-time { color: var(--muted); font-variant-numeric: tabular-nums; }
 
-/* 비상정지·연결·알림 띠: 페이지가 스크롤되는 좁은 화면에서도 맨 위에 붙어 있게 (넓은 화면은 페이지가 스크롤되지 않아 영향 없음) */
+/* 비상정지 띠: 페이지가 스크롤되는 좁은 화면에서도 맨 위에 붙어 있게 (넓은 화면은 페이지가 스크롤되지 않아 영향 없음) */
 .alerts { position: sticky; top: 0; z-index: 40; }
+.workspace > .notice { flex: none; }
 .notice, .banner {
   display: flex;
   align-items: center;

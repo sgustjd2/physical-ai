@@ -129,15 +129,19 @@ export function StepStrip({ steps, status, labelOf, selectedId, onSelect }) {
 
 // 정보/오류 알림. undo가 있으면 '되돌리기' 제공 (확인 창 대신 되돌릴 수 있게)
 export function Notice({ notice, onClose }) {
+  const ref = useRef()
   useEffect(() => {
     if (!notice) return
+    // 페이지가 스크롤되는 좁은 화면에서 알림이 화면 위로 벗어나 있으면 그만큼만 올려서 보이게 (캔버스는 가리지 않고 아래로 밀림)
+    const r = ref.current?.getBoundingClientRect()
+    if (r && r.top < 0) ref.current.scrollIntoView({ block: 'nearest', behavior: matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth' })
     // 되돌리기가 있거나 경고·오류면 읽고 대응할 시간을 더 준다
     const t = setTimeout(onClose, notice.undo || notice.tone === 'warn' || notice.tone === 'error' ? 10000 : 6000)
     return () => clearTimeout(t)
   }, [notice, onClose])
   if (!notice) return null
   return (
-    <div className={`notice ${notice.tone || 'info'}`} role={notice.tone === 'error' ? 'alert' : 'status'}>
+    <div ref={ref} className={`notice ${notice.tone || 'info'}`} role={notice.tone === 'error' ? 'alert' : 'status'}>
       <span>{notice.text}</span>
       {notice.undo && <button className="ghost" onClick={() => { notice.undo(); onClose() }}>되돌리기</button>}
       <button className="icon-btn" onClick={onClose} aria-label="알림 닫기"><Icon name="close" /></button>
