@@ -11,7 +11,7 @@ import { currentDeg, moveTo } from './ros'
 // { specs: type→spec, colorOf: type→CSS 색, loaded: 블록 목록을 한 번이라도 받았는지 } — 분류(group)마다 색 하나
 export const Specs = createContext({ specs: {}, colorOf: () => 'var(--muted)', loaded: false })
 export const JointNames = createContext([]) // 로봇 프로파일의 관절 순서
-// 노드·연결선에서 부르는 편집 동작 (App이 채움): openPicker(버튼, {source, port} | {edge}), test, duplicate, remove
+// 노드·연결선에서 부르는 편집 동작 (App이 채움): openPicker(버튼, {source, port} | {edge}), test, copy, duplicate, remove
 export const NodeActions = createContext({})
 
 const DEFAULT_OUT = [{ id: 'out', label: '' }]
@@ -46,7 +46,8 @@ export function FlowNode({ id, type, data, selected, dragging }) {
       {type !== 'start' && (
         <NodeToolbar isVisible={selected && !dragging} position={Position.Top} align="end" className="node-toolbar">
           <button className="icon-btn" onClick={() => act.test(id)} disabled={!spec} title="이 단계만 시뮬레이션" aria-label="이 단계만 시뮬레이션"><Icon name="sim" /></button>
-          <button className="icon-btn" onClick={() => act.duplicate(id)} title="복제" aria-label="복제"><Icon name="copy" /></button>
+          <button className="icon-btn" onClick={() => act.copy()} title="복사 (Ctrl+C)" aria-label="복사"><Icon name="copy" /></button>
+          <button className="icon-btn" onClick={() => act.duplicate(id)} title="복제" aria-label="복제"><Icon name="duplicate" /></button>
           <button className="icon-btn danger-text" onClick={() => act.remove(id)} title="삭제 (Delete)" aria-label="삭제"><Icon name="trash" /></button>
         </NodeToolbar>
       )}
@@ -229,7 +230,7 @@ export function Inspector({ node, onClose, links, options, onAddLink, onRemoveLi
             <Icon name="sim" />이 단계만 시뮬레이션
           </button>
           <span className="spacer" />
-          <button className="ghost" onClick={() => act.duplicate(node.id)}><Icon name="copy" />복제</button>
+          <button className="ghost" onClick={() => act.duplicate(node.id)}><Icon name="duplicate" />복제</button>
           <button className="ghost danger-text" onClick={() => act.remove(node.id)}><Icon name="trash" />삭제</button>
         </div>
       )}

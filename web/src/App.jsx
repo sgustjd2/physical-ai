@@ -4,6 +4,7 @@ import {
 } from '@xyflow/react'
 import { AIBuilder } from './AIBuilder'
 import { anchorOf, BlockPicker } from './BlockPicker'
+import { copyText, instantiate, parseClip } from './clipboard'
 import { Hint } from './Hint'
 import { createHistory } from './history'
 import { Icon } from './icons'
@@ -283,6 +284,47 @@ export default function App() {
     setNodes((ns) => [...ns.map((x) => ({ ...x, selected: false })), copy])
   }
 
+  // 복사/붙여넣기 (clipboard.js). 복사한 글자는 앱 안에도 들고 있어 붙여넣기 버튼(터치 화면)에 쓴다
+  const clip = useRef({ text: null, pastes: 0 })
+  const [clipCount, setClipCount] = useState(0)
+  const copyNodes = (cut = false) => {
+    const text = copyText(nodes, edges)
+    if (!text) return null
+    const n = parseClip(text).nodes.length
+    clip.current = { text, pastes: 0 }
+    setClipCount(n)
+    if (cut) {
+      deleteElements({ nodes: nodes.filter((x) => x.selected && x.type !== 'start').map(({ id }) => ({ id })) })
+        .then(() => setNotice({ tone: 'info', text: `블록 ${n}개를 잘라냈습니다. Ctrl+V 또는 붙여넣기 버튼으로 붙여넣습니다.` }))
+    } else {
+      setNotice({ tone: 'info', text: `블록 ${n}개를 복사했습니다. Ctrl+V 또는 붙여넣기 버튼으로 붙여넣습니다 (다른 워크플로에도 가능).` })
+    }
+    return text
+  }
+  const paste = (text) => {
+    const c = parseClip(text)
+    if (!c || !flowRef.current) return false
+    let dx
+    let dy
+    if (text === clip.current.text && c.nodes.every((n) => byId.has(n.id))) {
+      clip.current.pastes += 1
+      dx = dy = 40 * clip.current.pastes // 같은 워크플로: 원본 옆에 계단식으로
+    } else {
+      // 다른 워크플로·다른 탭에서 온 블록: 지금 보이는 화면 가운데로
+      const r = flowRef.current.getBoundingClientRect()
+      const at = screenToFlowPosition({ x: r.left + r.width / 2, y: r.top + r.height / 3 })
+      dx = at.x - NODE_W / 2 - Math.min(...c.nodes.map((n) => n.position.x))
+      dy = at.y - Math.min(...c.nodes.map((n) => n.position.y))
+    }
+    const stamp = Date.now()
+    let seq = 0
+    const g = instantiate(c, () => `n${stamp}_${seq++}`, dx, dy)
+    setNodes((ns) => [...ns.map((n) => (n.selected ? { ...n, selected: false } : n)), ...g.nodes])
+    setEdges((es) => [...es, ...g.edges])
+    setNotice({ tone: 'info', text: `블록 ${g.nodes.length}개를 붙여넣었습니다.` })
+    return true
+  }
+
   // 노드·연결선이 부르는 동작: 객체는 그대로 두고 함수만 매번 바꿔 끼워, 노드 전체가 다시 그려지지 않게 한다
   const actions = useRef({}).current
   Object.assign(actions, {
@@ -292,7 +334,35 @@ export default function App() {
     remove: (id) => deleteElements({ nodes: [{ id }] }),
     undo,
     redo,
+    copyNodes,
+    paste,
+    // 툴바 '복사' 버튼: 시스템 클립보드는 https·localhost에서만 쓸 수 있어 실패해도 앱 안 클립보드로 붙여넣기 가능
+    copy: () => { const t = copyNodes(); if (t) navigator.clipboard?.writeText(t).catch(() => {}) },
   })
+
+  // Ctrl+C·Ctrl+X·Ctrl+V: 브라우저 복사/붙여넣기 이벤트를 쓴다 (GB10에 http로 접속해도 동작, 다른 탭에 붙여넣기 가능).
+  // 입력칸 안이거나 글자를 끌어서 골라 둔 상태면 브라우저 기본(글자 복사)에 맡긴다
+  useEffect(() => {
+    const typing = (e) => e.target.closest?.('input, textarea, select, [contenteditable="true"]')
+    const onCopy = (e) => {
+      if (typing(e) || getSelection()?.toString()) return
+      const text = actions.copyNodes(e.type === 'cut')
+      if (!text) return
+      e.clipboardData.setData('text/plain', text)
+      e.preventDefault()
+    }
+    const onPaste = (e) => {
+      if (!typing(e) && actions.paste(e.clipboardData.getData('text/plain'))) e.preventDefault()
+    }
+    addEventListener('copy', onCopy)
+    addEventListener('cut', onCopy)
+    addEventListener('paste', onPaste)
+    return () => {
+      removeEventListener('copy', onCopy)
+      removeEventListener('cut', onCopy)
+      removeEventListener('paste', onPaste)
+    }
+  }, [actions])
 
   // Ctrl+Z 되돌리기, Ctrl+Shift+Z·Ctrl+Y 다시 하기. 한글 입력 상태에서도 되도록 물리 키(code)로 본다.
   // 입력칸에 글자를 쓰는 중에는 브라우저 기본(입력칸 글자 되돌리기)에 맡긴다
@@ -535,10 +605,14 @@ export default function App() {
                       <button className="icon-btn" onClick={redo} disabled={!canRedo} aria-label="다시 하기" title="다시 하기 (Ctrl+Shift+Z)" aria-keyshortcuts="Control+Shift+Z Control+Y">
                         <Icon name="redo" />
                       </button>
+                      <button className="icon-btn" onClick={() => paste(clip.current.text)} disabled={!clipCount} aria-label="붙여넣기" aria-keyshortcuts="Control+V"
+                        title={clipCount ? `붙여넣기: 복사한 블록 ${clipCount}개 (Ctrl+V)` : '붙여넣기 (먼저 블록을 복사하세요)'}>
+                        <Icon name="paste" />
+                      </button>
                       <Hint label="블록 추가·연결 방법">
                         노드 아래의 + 를 누르면 그 다음에, 연결선 가운데의 + 를 누르면 그 사이에 블록을 넣습니다. 점을 끌어 다른 단계에 이으면 연결되고,
                         한 출력에 여러 단계를 이으면 동시에 실행됩니다(합류 노드에서 다시 모임). 선택한 노드 위 버튼으로 시험·복제·삭제하고, Delete 키로도 지웁니다.
-                        잘못 바꿨으면 Ctrl+Z(되돌리기), Ctrl+Shift+Z(다시 하기).
+                        Ctrl+C·Ctrl+X·Ctrl+V로 복사·잘라내기·붙여넣기(다른 워크플로·다른 탭에도), 잘못 바꿨으면 Ctrl+Z(되돌리기), Ctrl+Shift+Z(다시 하기).
                       </Hint>
                     </Panel>
                     {editing && (
