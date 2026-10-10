@@ -1,6 +1,6 @@
-// 워크플로 노드 UI. 노드 타입·분류·입력 필드는 실행기(ros/nodes/*.py)가 /workflow/node_types 로 알려주고
-// 여기서는 그리기만 한다. 새 노드 타입을 추가해도 이 파일은 고치지 않는다.
-// 캔버스의 노드는 요약만 보여 주고(어떤 배율에서도 읽히도록), 편집은 선택했을 때 뜨는 인스펙터에서 실제 크기로 한다.
+// 워크플로 노드 UI. 노드 타입·분류·아이콘·입력 필드·출력 포트는 실행기(ros/nodes/*.py)가 /workflow/node_types 로
+// 알려주고 여기서는 그리기만 한다. 새 노드 타입을 추가해도 이 파일은 고치지 않는다.
+// 캔버스의 노드는 요약만(어떤 배율에서도 읽히도록), 편집은 선택했을 때 뜨는 인스펙터에서 실제 크기로 한다.
 import { createContext, useContext } from 'react'
 import { Handle, Position, useReactFlow } from '@xyflow/react'
 import { Icon } from './icons'
@@ -10,8 +10,10 @@ import { currentDeg, moveTo } from './ros'
 export const Specs = createContext({ specs: {}, colorOf: () => 'var(--muted)' })
 export const JointNames = createContext([]) // 로봇 프로파일의 관절 순서
 
-export const START = { type: 'start', label: '시작', group: '', fields: [] }
+const DEFAULT_OUT = [{ id: 'out', label: '' }]
+export const START = { type: 'start', label: '시작', group: '', icon: 'play', fields: [], outputs: DEFAULT_OUT }
 export const CATEGORY_COLORS = 6
+export const outputsOf = (spec) => (spec?.outputs?.length ? spec.outputs : DEFAULT_OUT)
 
 export const defaults = (spec, names) =>
   Object.fromEntries(spec.fields.map((f) => [f.key, f.kind === 'joints' ? names.map(() => 0) : f.default]))
@@ -32,16 +34,30 @@ const summary = (f, v) => {
 export function FlowNode({ type, data }) {
   const { specs, colorOf } = useContext(Specs)
   const spec = type === 'start' ? START : specs[type]
+  const outs = outputsOf(spec)
+  const labeled = outs.length > 1 || outs[0].label
   return (
-    <div className={`node${type === 'start' ? ' node-start' : ''}${spec ? '' : ' unknown'}`} style={{ '--cat': colorOf(type) }}>
+    <div className={`node node-${type}${spec ? '' : ' unknown'}`} style={{ '--cat': colorOf(type) }}>
       {type !== 'start' && <Handle type="target" position={Position.Top} />}
       <div className="node-head">
-        {type === 'start' ? <Icon name="play" size={12} /> : <span className="node-dot" aria-hidden="true" />}
+        <span className="node-icon" aria-hidden="true">{spec?.icon ? <Icon name={spec.icon} size={14} /> : <span className="node-dot" />}</span>
         <span className="node-title">{spec?.label ?? type}</span>
+        {type !== 'start' && <span className="node-type" translate="no">{type}</span>}
       </div>
-      {!spec && type !== 'start' && <div className="node-sum warn-text">이 서버에 없는 노드 타입</div>}
-      {spec?.fields.slice(0, 3).map((f) => <div key={f.key} className="node-sum">{summary(f, data[f.key])}</div>)}
-      <Handle type="source" position={Position.Bottom} />
+      {(!spec || spec.fields.length > 0) && (
+        <div className="node-body">
+          {!spec && <div className="node-sum warn-text">이 서버에 없는 노드 타입</div>}
+          {spec?.fields.filter((f) => !f.advanced).slice(0, 2).map((f) => <div key={f.key} className="node-sum">{summary(f, data[f.key])}</div>)}
+        </div>
+      )}
+      {labeled && (
+        <div className="node-ports" aria-hidden="true">
+          {outs.map((o) => <span key={o.id}>{o.label}</span>)}
+        </div>
+      )}
+      {outs.map((o, i) => (
+        <Handle key={o.id} id={o.id} type="source" position={Position.Bottom} style={{ left: `${((i + 0.5) / outs.length) * 100}%` }} />
+      ))}
     </div>
   )
 }
@@ -68,8 +84,8 @@ function Joints({ id, value, duration }) {
           현재 자세 저장
         </button>
         <button disabled={!names.length} onClick={() => moveTo(vals.map(Number), Number(duration) || 2)}
-          title="이 노드의 자세로 로봇을 움직여 확인">
-          이 자세로 이동
+          title="실제 로봇을 이 자세로 움직여 확인">
+          실제 로봇으로 이동
         </button>
       </div>
     </fieldset>
@@ -92,35 +108,65 @@ function Field({ id, data, f }) {
   )
 }
 
-export function Inspector({ node, onClose, onDelete, next, nextOptions, onNext }) {
+// 출력 포트별 다음 단계: 드래그 없이 연결(키보드·터치 대안). 한 포트에 둘 이상이면 병렬 실행
+function NextSteps({ node, spec, links, options, onAdd, onRemove }) {
+  const outs = outputsOf(spec)
+  return outs.map((o) => {
+    const mine = links.filter((l) => l.port === o.id)
+    const free = options.filter((opt) => !mine.some((l) => l.target === opt.id))
+    return (
+      <div className="field" key={o.id}>
+        <span className="field-label">{o.label ? `다음 단계: ${o.label}일 때` : '다음 단계'}</span>
+        {mine.map((l) => (
+          <div className="link-row" key={l.edgeId}>
+            <span>{options.find((opt) => opt.id === l.target)?.text ?? l.target}</span>
+            <button className="icon-btn" onClick={() => onRemove(l.edgeId)} aria-label="이 연결 끊기"><Icon name="close" /></button>
+          </div>
+        ))}
+        {mine.length > 1 && <span className="hint-text">{mine.length}개 단계가 동시에 실행됩니다 (병렬). 다시 모으려면 합류 노드를 쓰세요.</span>}
+        <select name={`next-${o.id}`} value="" onChange={(e) => e.target.value && onAdd(o.id, e.target.value)}
+          aria-label={`${o.label || '다음 단계'} 연결 추가`}>
+          <option value="">{mine.length ? '+ 동시에 실행할 단계 추가' : '연결할 단계 선택'}</option>
+          {free.map((opt) => <option key={opt.id} value={opt.id}>{opt.id === node.id ? `${opt.text} (자기 자신, 반복)` : opt.text}</option>)}
+        </select>
+      </div>
+    )
+  })
+}
+
+export function Inspector({ node, onClose, onDelete, onTest, links, options, onAddLink, onRemoveLink }) {
   const { specs, colorOf } = useContext(Specs)
   const spec = node.type === 'start' ? START : specs[node.type]
+  const basic = spec?.fields.filter((f) => !f.advanced) ?? []
+  const advanced = spec?.fields.filter((f) => f.advanced) ?? []
   return (
     <section className="inspector" aria-label={`${spec?.label ?? node.type} 설정`} style={{ '--cat': colorOf(node.type) }}>
       <div className="inspector-head">
-        <span className="node-dot" aria-hidden="true" />
+        <span className="node-icon" aria-hidden="true">{spec?.icon ? <Icon name={spec.icon} size={14} /> : <span className="node-dot" />}</span>
         <h2>{spec?.label ?? node.type}</h2>
         {spec?.group && <span className="muted">{spec.group}</span>}
         <button className="icon-btn" onClick={onClose} aria-label="편집 닫기"><Icon name="close" /></button>
       </div>
       <div className="inspector-body">
         {!spec && <p className="warn-text">이 서버에 없는 노드 타입입니다. 실행기에 해당 플러그인(ros/nodes)이 있는지 확인하세요.</p>}
-        {spec && !spec.fields.length && <p className="muted">설정할 항목이 없습니다. 워크플로는 여기서 시작합니다.</p>}
-        {spec?.fields.map((f) => <Field key={f.key} id={node.id} data={node.data} f={f} />)}
-        <label className="field">
-          <span className="field-label">다음 단계</span>
-          <select name="next" value={next} onChange={(e) => onNext(e.target.value)}>
-            <option value="">없음 (여기서 끝)</option>
-            {nextOptions.map((o) => (
-              <option key={o.id} value={o.id}>{o.id === node.id ? `${o.text} (자기 자신, 반복)` : o.text}</option>
-            ))}
-          </select>
-        </label>
+        {basic.map((f) => <Field key={f.key} id={node.id} data={node.data} f={f} />)}
+        {advanced.length > 0 && (
+          <details className="advanced">
+            <summary>고급 설정 <span className="muted">{advanced.length}</span></summary>
+            <div className="advanced-body">
+              {advanced.map((f) => <Field key={f.key} id={node.id} data={node.data} f={f} />)}
+            </div>
+          </details>
+        )}
+        {node.type === 'join' && <p className="hint-text">들어오는 갈래가 모두 도착하면 다음 단계로 한 번 진행합니다.</p>}
+        <NextSteps node={node} spec={spec} links={links} options={options} onAdd={onAddLink} onRemove={onRemoveLink} />
       </div>
       {node.type !== 'start' && (
         <div className="inspector-foot">
-          <button className="ghost danger-text" onClick={onDelete}><Icon name="trash" />노드 삭제</button>
-          <span className="muted">Delete 키</span>
+          <button className="ghost" onClick={onTest} disabled={!spec} title="이 단계만 디지털 트윈에서 실행 (실제 로봇·장비는 그대로)">
+            <Icon name="sim" />이 단계만 시뮬레이션
+          </button>
+          <button className="ghost danger-text" onClick={onDelete}><Icon name="trash" />삭제</button>
         </div>
       )}
     </section>

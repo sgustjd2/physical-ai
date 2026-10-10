@@ -126,7 +126,14 @@ export function Episodes({ episode, connected }) {
         </form>
       )}
       {episode.error && <p className="error-text" role="alert">{episode.error}</p>}
-      <h3 className="list-title">최근 에피소드 <span className="muted">{episode.episodes?.length || 0}개</span></h3>
+      <h3 className="list-title">
+        최근 에피소드 <span className="muted">{episode.episodes?.length || 0}개</span>
+        {/* 학습 데이터 준비 현황 (변환 기본값은 성공 에피소드만 사용) */}
+        {['success', 'fail'].map((r) => {
+          const n = (episode.episodes || []).filter((e) => e.result === r).length
+          return n ? <span key={r} className={`result ${r}`}>{RESULT[r]} {n}</span> : null
+        })}
+      </h3>
       {episode.episodes?.length ? (
         <div className="table-wrap">
           <table className="episode-table">

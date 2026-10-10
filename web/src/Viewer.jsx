@@ -1,4 +1,6 @@
-// /robot_description(URDF)을 three.js로 그리고 매 프레임 /joint_states 최신값을 반영한다. 로봇이 바뀌어도 코드 그대로.
+// 디지털 트윈 뷰: /robot_description(URDF)을 three.js로 그리고 매 프레임 /joint_states 최신값을 반영한다.
+// 반투명 '고스트'는 목표 자세(선택한 MoveJ 노드, 또는 실행 중 받은 이동 명령)를 겹쳐 보여 준다.
+// 시뮬레이션 실행 중에는 트윈 팔(/sim)이 움직이고, 고스트는 그대로 있는 실제 로봇 위치를 보여 준다. 로봇이 바뀌어도 코드 그대로.
 import { useEffect, useRef, useState } from 'react'
 import * as THREE from 'three'
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js'
@@ -7,11 +9,21 @@ import { Icon } from './icons'
 import { latest, robotDescription } from './ros'
 
 const HOME = { pos: [1.4, 1.0, 1.6], target: [0, 0.45, 0] }
+const REACHED_DEG = 0.5
 
-export default function Viewer({ stale }) {
+// ghost: { 관절이름: rad } | null  (명시 목표). followCommand: 명시 목표가 없을 때 실행 중 이동 명령을 고스트로
+export default function Viewer({ stale, ghost, followCommand, simRun, large }) {
   const ref = useRef()
   const resetRef = useRef(() => {})
+  const ghostRef = useRef(ghost)
+  const followRef = useRef(followCommand)
+  const simRef = useRef(simRun)
+  const remainRef = useRef(null)
   const [robotName, setRobotName] = useState('')
+  const [remain, setRemain] = useState(null) // 목표까지 남은 최대 각도(°), 목표 없으면 null
+  ghostRef.current = ghost
+  followRef.current = followCommand
+  simRef.current = simRun
 
   useEffect(() => {
     const el = ref.current
@@ -26,12 +38,14 @@ export default function Viewer({ stale }) {
     const sun = new THREE.DirectionalLight(0xffffff, 1.6)
     sun.position.set(2, 4, 3)
     scene.add(sun)
+    const ghostMat = new THREE.MeshStandardMaterial({ transparent: true, opacity: 0.32, depthWrite: false })
 
-    // 배경·그리드 색은 CSS 토큰에서 읽어 라이트/다크 테마를 따른다
+    // 배경·그리드·고스트 색은 CSS 토큰에서 읽어 라이트/다크 테마를 따른다
     let grid
     const theme = () => {
       const css = getComputedStyle(el)
       scene.background = new THREE.Color(css.getPropertyValue('--viewer-bg').trim())
+      ghostMat.color.set(css.getPropertyValue('--accent').trim())
       if (grid) scene.remove(grid)
       grid = new THREE.GridHelper(2, 20, css.getPropertyValue('--viewer-grid').trim(), css.getPropertyValue('--viewer-grid-sub').trim())
       scene.add(grid)
@@ -49,12 +63,16 @@ export default function Viewer({ stale }) {
     resetRef.current()
 
     let robot
+    let ghostBot
     // ponytail: 기본 도형 URDF만 그려짐. package:// 메시는 메시 파일을 HTTP로 서빙하고 loader.packages 를 지정해야 함
     const onUrdf = (m) => {
-      if (robot) scene.remove(robot)
+      if (robot) scene.remove(robot, ghostBot)
       robot = new URDFLoader().parse(m.data)
-      robot.rotation.x = -Math.PI / 2 // ROS는 Z-up, three.js는 Y-up
-      scene.add(robot)
+      ghostBot = new URDFLoader().parse(m.data)
+      ghostBot.traverse((o) => { if (o.isMesh) o.material = ghostMat })
+      for (const r of [robot, ghostBot]) r.rotation.x = -Math.PI / 2 // ROS는 Z-up, three.js는 Y-up
+      ghostBot.visible = false
+      scene.add(robot, ghostBot)
       setRobotName(robot.robotName || '로봇')
       renderer.domElement.setAttribute('aria-label', `${robot.robotName || '로봇'} 3D 자세`)
     }
@@ -71,15 +89,31 @@ export default function Viewer({ stale }) {
     let raf
     const loop = () => {
       raf = requestAnimationFrame(loop)
-      if (robot) for (const [n, v] of Object.entries(latest.joints)) robot.joints[n]?.setJointValue(v)
+      if (robot) {
+        const sim = simRef.current
+        for (const [n, v] of Object.entries(sim ? latest.simJoints : latest.joints)) robot.joints[n]?.setJointValue(v)
+        const target = sim ? latest.joints : ghostRef.current || (followRef.current ? latest.command : null)
+        ghostBot.visible = !!target
+        let worst = null
+        if (target) {
+          for (const [n, v] of Object.entries(target)) {
+            ghostBot.joints[n]?.setJointValue(v)
+            if (!sim && n in latest.joints) worst = Math.max(worst ?? 0, Math.abs(v - latest.joints[n]) * 180 / Math.PI)
+          }
+        }
+        remainRef.current = sim ? -1 : worst
+      }
       controls.update()
       renderer.render(scene, camera)
     }
     loop()
+    // 남은 각도 표시는 5Hz면 충분 (매 프레임 React 갱신을 피함)
+    const tick = setInterval(() => setRemain(remainRef.current == null ? null : Math.round(remainRef.current * 10) / 10), 200)
 
     return () => {
       robotDescription.unsubscribe(onUrdf)
       scheme.removeEventListener('change', theme)
+      clearInterval(tick)
       cancelAnimationFrame(raf)
       ro.disconnect()
       controls.dispose()
@@ -89,10 +123,24 @@ export default function Viewer({ stale }) {
   }, [])
 
   return (
-    <div ref={ref} className={`viewer${stale ? ' stale' : ''}`}>
+    <div ref={ref} className={`viewer${stale ? ' stale' : ''}${large ? ' large' : ''}`}>
       <span className="viewer-chip">
         {stale ? (robotName ? '연결 끊김: 마지막으로 받은 자세' : '연결 대기 중') : robotName || '로봇 모델 수신 대기 중…'}
       </span>
+      {simRun && !stale && (
+        <span className="viewer-legend sim">
+          <span className="ghost-swatch" aria-hidden="true" />
+          반투명: 실제 로봇 위치 (움직이지 않음)
+          <b>시뮬레이션 중</b>
+        </span>
+      )}
+      {!simRun && remain != null && remain >= 0 && !stale && (
+        <span className="viewer-legend">
+          <span className="ghost-swatch" aria-hidden="true" />
+          {ghost ? '선택한 단계의 목표 자세' : '명령 목표 자세'}
+          <b className={remain <= REACHED_DEG ? 'reached' : ''}>{remain <= REACHED_DEG ? '도달' : `남은 각도 ${remain.toFixed(1)}°`}</b>
+        </span>
+      )}
       <button className="icon-btn viewer-reset" onClick={() => resetRef.current()} aria-label="시점 초기화" title="시점 초기화">
         <Icon name="view" />
       </button>

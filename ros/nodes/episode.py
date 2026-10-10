@@ -12,6 +12,8 @@ from std_msgs.msg import String
 from nodes import field, node
 
 GROUP = '데이터 수집'
+ICON = 'data'
+ORDER = 4
 
 LATCHED = QoSProfile(depth=1, durability=DurabilityPolicy.TRANSIENT_LOCAL)
 
@@ -37,6 +39,8 @@ def request(ctx, op, **kw):
     field('task', '작업 설명 (학습 지시문)', 'text', '물체를 집어서 옮기기'),
 ])
 def episode_start(ctx, d):
+    if ctx.sim:  # 시뮬레이션 실행은 학습 데이터로 녹화하지 않는다
+        return
     # 시작 응답을 기다리는 중에 정지돼도 녹화가 남지 않도록 정리 훅을 먼저 건다
     ctx.on_finish('episode', lambda state: send(ctx, 'stop', result=state))
     try:
@@ -50,5 +54,7 @@ def episode_start(ctx, d):
     field('result', '결과', 'select', 'success', options=['success', 'fail']),
 ])
 def episode_end(ctx, d):
+    if ctx.sim:
+        return
     ctx.cleanups.pop('episode', None)
     request(ctx, 'stop', result=d.get('result', 'success'))

@@ -14,6 +14,9 @@ mock: true
 # 제조사 드라이버가 직접 /robot_description 을 발행하면 이 줄을 지운다.
 urdf: robot.urdf
 
+# 그리퍼 노드가 보내는 토픽 (std_msgs/Bool, true=닫기). 장비에 맞게 바꾼다
+gripper_topic: /gripper/cmd
+
 # 에피소드 녹화 대상 토픽. 카메라를 달면 여기에 추가 (예: /camera/color/image_raw/compressed)
 record_topics:
   - /joint_states
@@ -21,3 +24,18 @@ record_topics:
   - /workflow/status
   - /tf
   - /tf_static
+
+# LeRobot 데이터셋 변환 설정 (ai/convert_lerobot.py)
+dataset:
+  fps: 30
+  # observation.state / action 에 들어갈 관절. 생략하면 위 joints (그리퍼를 넣으려면 여기에 추가)
+  # joints: [joint1, joint2, joint3, joint4, joint5, joint6, gripper_joint]
+  # action(프레임마다의 목표 관절값):
+  #   next_state  = 다음 프레임의 관절값. 리더 팔 없이 조그/워크플로로 녹화할 때
+  #   <토픽 이름> = 그 토픽의 직전 값. 리더-팔로워 텔레옵이면 /leader/joint_states (JointState 또는 JointTrajectory)
+  action: next_state
+  # LeRobot 카메라 이름: 토픽 (sensor_msgs/Image 또는 CompressedImage). 위 record_topics 에도 넣어야 녹화됨
+  cameras: {}
+  # cameras:
+  #   front: /camera/color/image_raw/compressed
+  #   wrist: /wrist_camera/image_raw

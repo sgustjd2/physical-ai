@@ -1,4 +1,4 @@
-"""스모크 테스트: 기동 중인 스택(실행기 + 녹화기 + 모의 팔)에 워크플로를 보내고 결과를 확인한다.
+"""스모크 테스트: 기동 중인 스택(실행기 + 저장소 + 녹화기 + 모의 팔 + 트윈 팔)에 워크플로를 보내고 결과를 확인한다.
 
   docker compose exec ros bash -c "source /opt/ros/jazzy/setup.bash && cd /ros && python3 smoke_test.py"
 """
@@ -26,11 +26,14 @@ LATCHED = QoSProfile(depth=1, durability=DurabilityPolicy.TRANSIENT_LOCAL)
 
 rclpy.init()
 node = rclpy.create_node('smoke_test')
-states, joints, episode, types = [], {}, {}, []
+states, joints, episode, types, library, sim_j1 = [], {}, {}, [], {}, []
 node.create_subscription(String, '/workflow/status', lambda m: states.append(json.loads(m.data)), LATCHED)
 node.create_subscription(String, '/episode/status', lambda m: episode.update(json.loads(m.data)), LATCHED)
 node.create_subscription(String, '/workflow/node_types', lambda m: types.extend(json.loads(m.data)), LATCHED)
 node.create_subscription(JointState, '/joint_states', lambda m: joints.update(zip(m.name, m.position)), 10)
+node.create_subscription(String, '/workflow/library', lambda m: library.update(json.loads(m.data)), LATCHED)
+node.create_subscription(JointState, '/sim/joint_states', lambda m: sim_j1.append(math.degrees(m.position[0])), 10)
+lib_cmd = node.create_publisher(String, '/workflow/library/cmd', 10)
 run = node.create_publisher(String, '/workflow/run', 10)
 stop = node.create_publisher(Empty, '/workflow/stop', 10)
 flag = node.create_publisher(Bool, '/smoke/flag', 10)
@@ -43,19 +46,28 @@ def spin_until(pred, timeout):
         rclpy.spin_once(node, timeout_sec=0.05)
 
 
-def send(nodes, edges):
+def send(nodes, edges, mode='real'):
     states.clear()
-    run.publish(String(data=json.dumps({'nodes': [{'id': 's', 'type': 'start'}, *nodes], 'edges': edges})))
+    run.publish(String(data=json.dumps({'nodes': [{'id': 's', 'type': 'start'}, *nodes], 'edges': edges, 'mode': mode})))
 
 
-def run_until_end(nodes, edges, timeout=15):
-    send(nodes, edges)
+def run_until_end(nodes, edges, timeout=15, mode='real'):
+    send(nodes, edges, mode)
     spin_until(lambda: states and states[-1]['state'] in ('done', 'error', 'stopped'), timeout)
     return states[-1]
 
 
-spin_until(lambda: run.get_subscription_count() and joints and states and episode and types, 30)
-assert {'move_j', 'wait', 'wait_topic', 'publish', 'episode_start', 'episode_end'} <= {t['type'] for t in types}
+def visited():
+    return [st['node'] for st in states if st['state'] == 'running']
+
+
+def wait_node(id_, sec=0.3):
+    return {'id': id_, 'type': 'wait', 'data': {'sec': sec}}
+
+
+spin_until(lambda: run.get_subscription_count() and lib_cmd.get_subscription_count() and joints and states and episode and types and library and sim_j1, 30)
+assert {'move_j', 'wait', 'wait_topic', 'publish', 'episode_start', 'episode_end', 'if', 'loop', 'join', 'gripper'} <= {t['type'] for t in types}
+assert next(t for t in types if t['type'] == 'if')['outputs'] == [{'id': 'yes', 'label': '예'}, {'id': 'no', 'label': '아니오'}]
 
 # 1) start → move_j → wait_topic(외부 신호) → publish → 끝
 target = [10, 20, 30, 0, 45, 0]
@@ -105,5 +117,49 @@ spin_until(lambda: episode['recording'], 10)
 stop.publish(Empty())
 spin_until(lambda: not episode['recording'] and episode['episodes'][0]['task'] == '자동 종료', 10)
 assert episode['episodes'][0]['result'] == 'stopped', episode['episodes'][0]
+
+# 6) 조건 분기: 시뮬레이션에서 지정한 방향(아니오)으로 간다
+end = run_until_end(
+    [{'id': 'c', 'type': 'if', 'data': {'topic': '/x', 'sim_result': '아니오'}}, wait_node('wy'), wait_node('wn')],
+    [{'source': 's', 'target': 'c'}, {'source': 'c', 'sourceHandle': 'yes', 'target': 'wy'},
+     {'source': 'c', 'sourceHandle': 'no', 'target': 'wn'}], mode='sim')
+assert end['state'] == 'done' and 'wn' in visited() and 'wy' not in visited(), visited()
+
+# 7) 병렬 + 합류: 0.6초 두 갈래가 동시에 돌고, 합류 뒤 노드는 한 번만
+t0 = time.monotonic()
+end = run_until_end(
+    [wait_node('a', 0.6), wait_node('b', 0.6), {'id': 'j', 'type': 'join'}, wait_node('after', 0.2)],
+    [{'source': 's', 'target': 'a'}, {'source': 's', 'target': 'b'}, {'source': 'a', 'target': 'j'},
+     {'source': 'b', 'target': 'j'}, {'source': 'j', 'target': 'after'}])
+took = time.monotonic() - t0
+assert end['state'] == 'done' and took < 1.2, (end, took)
+assert any({'a', 'b'} <= set(st.get('active', [])) for st in states), [st.get('active') for st in states]
+assert visited().count('after') == 1, visited()
+
+# 8) 반복 3회
+end = run_until_end(
+    [{'id': 'l', 'type': 'loop', 'data': {'count': 3}}, wait_node('body', 0.2)],
+    [{'source': 's', 'target': 'l'}, {'source': 'l', 'sourceHandle': 'repeat', 'target': 'body'},
+     {'source': 'body', 'target': 'l'}])
+assert end['state'] == 'done' and visited().count('body') == 3, visited()
+
+# 9) 시뮬레이션 실행: 실제 팔은 그대로, 트윈 팔(/sim)만 목표로 간다
+before = dict(joints)
+sim_j1.clear()
+end = run_until_end([{'id': 'm', 'type': 'move_j', 'data': {'joints': [30, 0, 0, 0, 0, 0], 'duration': 0.5}},
+                     {'id': 'g', 'type': 'gripper', 'data': {'action': '닫기'}}],
+                    [{'source': 's', 'target': 'm'}, {'source': 'm', 'target': 'g'}], mode='sim')
+assert end['state'] == 'done' and end['mode'] == 'sim', end
+assert all(abs(joints[n] - before[n]) < 0.01 for n in before), '시뮬레이션인데 실제 팔이 움직임'
+assert max(sim_j1) > 29, max(sim_j1)
+
+# 10) 서버 저장소: 저장 → 목록에 있음 → 삭제
+graph = {'nodes': [{'id': 's', 'type': 'start'}], 'edges': []}
+lib_cmd.publish(String(data=json.dumps({'op': 'save', 'id': 'sv1', 'name': '스모크 워크플로', 'graph': graph}, ensure_ascii=False)))
+spin_until(lambda: library.get('ack') == 'sv1', 5)
+assert not library['error'] and any(w['name'] == '스모크 워크플로' for w in library['items']), library
+lib_cmd.publish(String(data=json.dumps({'op': 'delete', 'id': 'dl1', 'name': '스모크 워크플로'}, ensure_ascii=False)))
+spin_until(lambda: library.get('ack') == 'dl1', 5)
+assert not any(w['name'] == '스모크 워크플로' for w in library['items']), library
 
 print('smoke test OK')

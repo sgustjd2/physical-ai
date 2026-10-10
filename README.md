@@ -2,11 +2,12 @@
 
 미니 PC(Dell Pro Max GB10)에 올려서 로봇팔을 웹 브라우저로 프로그래밍하고, 모니터링하고, 학습용 데이터를 녹화하는 솔루션.
 
-- **노드형 워크플로 에디터**: 노드를 연결해 작업 순서를 만들고 실행. 실행 중인 노드가 실시간으로 강조 표시됨
-- **3D 뷰어**: 로봇 URDF가 `/joint_states`를 따라 실시간으로 움직임
-- **ROS2 연동**: 아무 토픽이나 실시간으로 보기, 토픽 조건 대기, 토픽 발행 (그리퍼/PLC/센서 연결)
+- **노코드 워크플로**: 비개발자가 노드를 연결해 공정을 만든다. 조건 분기(예/아니오), 병렬 실행과 합류, 반복 N회. 용도별 색(동작·흐름·장비·데이터), 핵심 항목만 보이고 나머지는 '고급'으로 접힘
+- **만들고 → 반영하고 → 시뮬레이션**: GB10에 이름 붙여 저장(누가 접속하든 같은 워크플로), '시뮬레이션'은 디지털 트윈 팔에서만 실행(실제 로봇·장비는 그대로), '실행'은 실제 로봇
+- **디지털 트윈**: 트윈 보기에서 3D가 주화면. 선택한 단계의 목표 자세를 고스트로 미리 보기, 실행 중 명령 목표 vs 실제 자세, 실제 로봇/시뮬레이션 표시
+- **ROS2 연동**: 아무 토픽이나 실시간으로 보기, 신호 대기·발행 (그리퍼/PLC/센서 연결)
 - **에피소드 녹화**: 관절 상태·명령·카메라를 rosbag2(mcap)로 녹화. 작업 설명(지시문)과 성공/실패를 함께 저장 → 모방학습/VLA 데이터
-- **모의 로봇팔**: 하드웨어 없이 개발하고 미리 시뮬레이션
+- **모의 로봇팔**: 하드웨어 없이 개발
 
 ## 무엇을 바꿀 때 어디를 고치나
 
@@ -18,7 +19,7 @@
 | 업데이트 배포 | `git pull && docker compose up -d --build` | — |
 
 웹은 특정 로봇을 모릅니다. 관절 이름, URDF, 노드 타입, 녹화 상태를 전부 ROS 토픽으로 받습니다.
-매 push마다 GitHub Actions가 웹 빌드와 ROS 스모크 테스트(실행·정지·오류·녹화)를 돌려서 업데이트가 기존 기능을 깨는지 확인합니다.
+매 push마다 GitHub Actions가 웹 빌드와 ROS 스모크 테스트(실행·정지·오류·녹화·분기·병렬·반복·시뮬레이션·저장소)를 돌려서 업데이트가 기존 기능을 깨는지 확인합니다.
 
 ```mermaid
 flowchart LR
@@ -27,6 +28,8 @@ flowchart LR
     W["web (nginx :8080)"]
     RB["rosbridge :9090"]
     EX["workflow_executor<br/>+ nodes/ 플러그인"]
+    ST["workflow_store<br/>(data/workflows)"]
+    SIM["sim_arm (/sim)<br/>디지털 트윈 팔"]
     REC["recorder<br/>(rosbag2 → data/episodes)"]
     RSP["robot_state_publisher"]
     M["mock_arm<br/>(또는 제조사 드라이버)"]
@@ -35,6 +38,9 @@ flowchart LR
   B -- HTTP --> W
   B <-- "WebSocket (roslibjs)" --> RB
   RB <-- "/workflow/*" --> EX
+  RB <-- "/workflow/library*" --> ST
+  EX -- "시뮬레이션 실행" --> SIM
+  M -. "쉬는 동안 자세 복사" .-> SIM
   RB <-- "/episode/*" --> REC
   EX -- "FollowJointTrajectory" --> M
   EX -- "/episode/cmd" --> REC
@@ -48,14 +54,15 @@ flowchart LR
 | 경로 | 내용 |
 |---|---|
 | `robots/<이름>/` | 로봇 프로파일: `robot.yaml`(관절, 액션, 모의 여부, 녹화 토픽) + URDF |
-| `ros/workflow_executor.py` | 그래프를 걷는 실행기 (노드 타입을 모름) |
-| `ros/nodes/` | 노드 타입 플러그인: `motion`(MoveJ), `flow`(대기), `topics`(토픽 대기/발행), `episode`(녹화 시작/종료) |
+| `ros/workflow_executor.py` | 그래프를 걷는 실행기: 출력 포트별 진행, 병렬 갈래, 합류, 실제/시뮬레이션 모드 (노드 타입을 모름) |
+| `ros/nodes/` | 노드 타입 플러그인: `motion`(MoveJ), `flow`(대기·조건 분기·반복·합류), `topics`(그리퍼, 고급: 신호 대기/토픽 발행), `episode`(녹화 시작/종료) |
+| `ros/workflow_store.py` | 워크플로 저장소 (GB10 `data/workflows/`) |
 | `ros/recorder.py` | 에피소드 녹화기 (rosbag2) |
-| `ros/mock_arm.py` | 모의 팔 (`/joint_states` + `FollowJointTrajectory`) |
+| `ros/mock_arm.py` | 모의 팔 (`/joint_states` + `FollowJointTrajectory`). `/sim`에 하나 더 띄워 디지털 트윈 팔로 씀 |
 | `ros/bringup.launch.py` | 프로파일을 읽어 필요한 노드만 기동 |
 | `ros/smoke_test.py` | 통합 테스트 (CI에서도 실행) |
 | `web/` | React + React Flow + three.js/urdf-loader + roslib |
-| `data/episodes/` | 녹화 결과 (git 제외) |
+| `data/episodes/`, `data/workflows/` | 녹화 결과, 저장된 워크플로 (git 제외) |
 | `TASKS.md` | 진행 체크리스트 / 로드맵 |
 
 ## 실행
@@ -105,16 +112,26 @@ WSL 미러 네트워킹에서는 DDS 디스커버리가 막히므로 `export FAS
 `ros/nodes/`에 파일 하나를 추가하고 `docker compose restart ros` 하면 웹 팔레트에 나타납니다.
 
 ```python
-# ros/nodes/gripper.py
-from std_msgs.msg import Bool
+# ros/nodes/vision.py
+from std_msgs.msg import String
 from nodes import field, node
 
-@node('gripper', '그리퍼', fields=[field('close', '동작', 'select', 'true', options=['true', 'false'])])
-def gripper(ctx, d):
-    ctx.publish('/gripper/cmd', Bool(data=d['close'] == 'true'))
-    ctx.sleep(0.5)
+GROUP = '비전'   # 팔레트 분류 (같은 분류 = 같은 색)
+ICON = 'vision'  # 분류 아이콘: arm | flow | device | data | vision
+ORDER = 3        # 팔레트에서 분류 순서
+
+@node('inspect', '외관 검사',
+      fields=[field('model', '검사 모델', 'select', 'A형', options=['A형', 'B형']),
+              field('timeout', '결과 대기 (s)', 'number', 3, advanced=True)],   # advanced → '고급 설정'에 접힘
+      outputs=[('ok', '합격'), ('ng', '불량')])                                # 출력 포트 = 분기
+def inspect(ctx, d):
+    if ctx.sim:                       # 시뮬레이션 실행: 실제 장비를 쓰지 않는다
+        return 'ok'
+    m = ctx.wait_for('/vision/result', String, lambda m: True, float(d.get('timeout') or 3))
+    return 'ok' if m.data == 'OK' else 'ng'
 ```
-파일 맨 위에 `GROUP = '그리퍼'`처럼 분류를 적으면 팔레트에서 그 분류로 묶이고 같은 색을 받습니다.
+노드 함수가 돌려준 포트에 연결된 단계로 진행하고, 한 포트에 여러 단계를 연결하면 병렬로 실행됩니다.
+`advanced=True`를 노드에 주면 팔레트의 '고급' 영역에 들어갑니다 (ROS 토픽을 직접 다루는 노드 등).
 `ctx`가 제공하는 헬퍼(`sleep`, `wait_until`, `wait_for`, `publish`, `on_finish`, `param`)와 필드 종류는 [`ros/nodes/__init__.py`](ros/nodes/__init__.py)에 정리되어 있습니다.
 기다릴 때는 반드시 `ctx` 헬퍼를 써야 정지 버튼이 먹습니다.
 
@@ -136,17 +153,29 @@ data/episodes/20261010-141316-372_빨간_블록_집기/
 
 ## 워크플로 노드 (기본 제공)
 
-| 노드 | 하는 일 |
-|---|---|
-| 시작 | 실행 시작점 |
-| MoveJ 관절 이동 | 관절 각도(°)로 이동. "현재 자세 저장"으로 조그한 자세를 티칭 |
-| 대기 | N초 대기 |
-| 토픽 조건 대기 | 토픽의 필드가 조건을 만족할 때까지 대기 (예: `/sensor/ready` `data == true`) |
-| 토픽 발행 | 아무 메시지나 발행 (예: 그리퍼 `std_msgs/msg/Bool` `{"data": true}`) |
-| 에피소드 시작 / 종료 | 녹화 구간 지정 + 작업 설명, 결과(success/fail) |
+| 분류 | 노드 | 하는 일 | 시뮬레이션 실행에서 |
+|---|---|---|---|
+| | 시작 | 실행 시작점 | |
+| 동작 | MoveJ 관절 이동 | 관절 각도(°)로 이동. "현재 자세 저장"으로 조그한 자세를 티칭 | 트윈 팔만 움직임 |
+| 흐름 | 대기 | N초 대기 | 그대로 |
+| 흐름 | 조건 분기 | 신호(토픽) 값을 보고 **예/아니오**로 갈라짐 | 지정한 방향(고급 설정)으로 |
+| 흐름 | 반복 | **반복** 쪽으로 N번 보낸 뒤 **완료** 쪽으로 | 그대로 |
+| 흐름 | 합류 | 병렬 갈래가 모두 도착하면 한 번 진행 | 그대로 |
+| 장비 연동 | 그리퍼 | 열기/닫기 (프로파일의 `gripper_topic`) | 보내지 않음 |
+| 장비 연동 (고급) | 신호 대기, 토픽 발행 | ROS 토픽을 직접 다룸 | 통과 / 보내지 않음 |
+| 데이터 수집 | 에피소드 시작 / 종료 | 녹화 구간 지정 + 작업 설명, 결과(success/fail) | 녹화하지 않음 |
 
-노드에서 나가는 엣지는 하나이고, 앞 노드로 되돌아가는 엣지를 그리면 반복합니다(정지 버튼으로 멈춤).
-워크플로는 브라우저에 자동 저장되며 JSON으로 내보내기/불러오기 할 수 있습니다.
+한 출력에 여러 단계를 연결하면 동시에 실행되고(병렬), 앞 단계로 되돌아가는 연결은 반복입니다(반복 노드의 횟수 또는 정지 버튼까지).
+연결은 핸들을 끌어도 되고, 노드를 선택해 인스펙터의 '다음 단계'에서 골라도 됩니다(키보드·터치).
+
+## 만들기 → 반영 → 시뮬레이션 → 실행
+
+1. **만들기**: 왼쪽 '노드 추가'에서 노드를 고르고(선택한 노드 뒤에 자동으로 이어짐) 인스펙터에서 값을 채웁니다. '열기 → 예제'에 분기·병렬·반복이 들어간 픽앤플레이스 예제가 있습니다.
+2. **반영**: '저장'을 누르면 GB10의 `data/workflows/`에 이름으로 저장되어 다른 PC·태블릿에서도 '열기'로 씁니다. 저장 후 바뀐 내용이 있으면 이름 옆에 '저장 안 됨'이 뜹니다.
+3. **시뮬레이션**: 디지털 트윈 팔(`/sim`)에서만 실행합니다. 실제 로봇·그리퍼·센서는 건드리지 않고, 3D에서는 트윈 팔이 움직이고 실제 로봇 위치가 반투명으로 겹쳐 보입니다. 노드 하나만 시험하려면 인스펙터의 '이 단계만 시뮬레이션'.
+4. **실행**: 실제 로봇으로 실행합니다. 헤더에 '실제 로봇' 표시가 뜨는지 확인하세요.
+
+워크플로는 브라우저에도 자동 저장되며, '열기' 메뉴에서 JSON 파일로 내보내기/불러오기도 됩니다.
 
 > ⚠️ 웹의 **정지** 버튼은 소프트웨어 정지(진행 중 목표 취소)입니다. 비상정지(E-stop)를 대신하지 않습니다. 실제 팔은 반드시 하드웨어 비상정지와 안전 펜스/협동 모드 설정을 갖추고 사용하세요.
 

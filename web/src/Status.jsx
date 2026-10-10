@@ -3,7 +3,7 @@ import { useEffect, useRef, useState } from 'react'
 import { Hint } from './Hint'
 import { Icon } from './icons'
 import { useTick } from './Panels'
-import { latest } from './ros'
+import { latest, ros } from './ros'
 
 export const STATE_LABEL = { idle: '대기', running: '실행 중', done: '완료', error: '오류', stopped: '정지됨' }
 
@@ -54,7 +54,8 @@ export function RunStatus({ status, steps, labelOf }) {
   }, [status.state, status.node, running])
   useTick(200, running)
 
-  const idx = steps.indexOf(status.node)
+  const act = status.active?.length ? status.active : [status.node]
+  const idx = Math.max(...act.map((id) => steps.indexOf(id)))
   const t = running && start.current ? (performance.now() - start.current) / 1000 : last
   const seg = (i) => (status.state === 'done' ? 'past' : i < idx ? 'past' : i === idx ? 'now' : '')
   return (
@@ -62,6 +63,8 @@ export function RunStatus({ status, steps, labelOf }) {
       <span className="runstat-text" role="status" aria-atomic="true">
         <span className="dot" aria-hidden="true" />
         <b>{STATE_LABEL[status.state] ?? status.state}</b>
+        {status.mode === 'sim' && status.state !== 'idle' && <span className="runstat-sim">시뮬레이션</span>}
+        {running && act.length > 1 && <span className="runstat-step">병렬 {act.length}개</span>}
         {idx >= 0 && status.state !== 'done' && <span className="runstat-step">{idx + 1}/{steps.length}단계</span>}
         {status.node && status.state !== 'done' && <span className="runstat-node">{labelOf(status.node)}</span>}
       </span>
@@ -72,6 +75,55 @@ export function RunStatus({ status, steps, labelOf }) {
       )}
       {t != null && <span className="runstat-time" title={running ? '경과 시간' : '마지막 사이클 시간'}>{t.toFixed(1)}s</span>}
     </div>
+  )
+}
+
+// 지금 명령이 실제 로봇으로 가는지 시뮬레이션(모의 팔)으로 가는지. 안전상 항상 보이게 둔다.
+// 기존 rosapi 노드 목록으로 판별: 모의 팔 노드가 있으면 시뮬레이션, 없고 관절 상태가 들어오면 실제 로봇
+export function RobotMode({ connected }) {
+  const [mode, setMode] = useState(null)
+  useEffect(() => {
+    if (!connected) { setMode(null); return }
+    const check = () => ros.getNodes(
+      // 트윈 팔(/sim/sim_arm)은 항상 떠 있으므로 루트의 모의 팔(/mock_arm)만 본다
+      (ns) => setMode(ns.includes('/mock_arm') ? 'sim'
+        : performance.now() - latest.stamp < 1500 ? 'real' : null),
+      () => setMode(null))
+    check()
+    const t = setInterval(check, 10000)
+    return () => clearInterval(t)
+  }, [connected])
+  if (!mode) return null
+  return (
+    <span className={`mode ${mode}`} title={mode === 'sim' ? '모의 팔로 실행 중입니다. 실제 로봇은 움직이지 않습니다' : '명령이 실제 로봇을 움직입니다'}>
+      {mode === 'sim' ? '시뮬레이션' : '실제 로봇'}
+    </span>
+  )
+}
+
+// 트윈 보기의 워크플로 단계 스트립: 실행 위치를 따라가고, 단계를 누르면 그 목표 자세를 고스트로 미리 본다
+export function StepStrip({ steps, status, labelOf, selectedId, onSelect }) {
+  const act = status.active?.length ? status.active : status.state === 'running' ? [status.node] : []
+  const cur = Math.max(-1, ...act.map((id) => steps.indexOf(id)), ['error', 'stopped'].includes(status.state) ? steps.indexOf(status.node) : -1)
+  const refs = useRef({})
+  useEffect(() => { refs.current[status.node]?.scrollIntoView({ block: 'nearest', inline: 'nearest' }) }, [status.node])
+  if (!steps.length) return <p className="steps-empty muted">시작 노드에 연결된 단계가 없습니다. 편집 보기에서 노드를 추가하세요.</p>
+  return (
+    <ol className="steps" aria-label="워크플로 단계">
+      {steps.map((id, i) => {
+        const now = act.includes(id) || (i === cur && ['error', 'stopped'].includes(status.state))
+        const state = status.state === 'done' ? 'past' : now ? `now ${status.state}` : i < cur ? 'past' : ''
+        return (
+          <li key={id}>
+            <button ref={(el) => { refs.current[id] = el }} className={`step ${state}${selectedId === id ? ' selected' : ''}`}
+              aria-current={now ? 'step' : undefined} aria-pressed={selectedId === id} onClick={() => onSelect(id)}>
+              <span className="step-no">{i + 1}</span>
+              <span className="step-label">{labelOf(id)}</span>
+            </button>
+          </li>
+        )
+      })}
+    </ol>
   )
 }
 

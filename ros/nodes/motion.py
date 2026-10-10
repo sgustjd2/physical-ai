@@ -10,13 +10,18 @@ from trajectory_msgs.msg import JointTrajectory, JointTrajectoryPoint
 from nodes import field, node
 
 GROUP = '동작'
+ICON = 'arm'
+ORDER = 1
+SIM_ACTION = '/sim/arm_controller/follow_joint_trajectory'  # 트윈 팔 (bringup이 /sim 에 띄움)
 
 
 def setup(ctx):
     action = ctx.param('trajectory_action', '/arm_controller/follow_joint_trajectory')
     ctx.arm = ActionClient(ctx, FollowJointTrajectory, action)
+    ctx.sim_arm = ActionClient(ctx, FollowJointTrajectory, SIM_ACTION)
     # 명령도 녹화되도록 발행 (학습 데이터의 action). 녹화 시작 전에 토픽이 있어야 하므로 미리 만든다
     ctx.cmd_pub = ctx.create_publisher(JointTrajectory, '/workflow/command', 10)
+    ctx.sim_cmd_pub = ctx.create_publisher(JointTrajectory, '/sim/workflow/command', 10)
 
 
 @node('move_j', 'MoveJ 관절 이동', fields=[
@@ -28,15 +33,17 @@ def move_j(ctx, d):
     duration = float(d.get('duration') or 2)
     if len(positions) != len(ctx.joints):
         raise ValueError(f'조인트 값 {len(positions)}개, 필요 {len(ctx.joints)}개')
-    if not ctx.arm.wait_for_server(timeout_sec=2):
-        raise RuntimeError('로봇팔 액션 서버 응답 없음')
+    # 시뮬레이션 실행이면 실제 팔은 그대로 두고 트윈 팔만 움직인다
+    arm, pub = (ctx.sim_arm, ctx.sim_cmd_pub) if ctx.sim else (ctx.arm, ctx.cmd_pub)
+    if not arm.wait_for_server(timeout_sec=2):
+        raise RuntimeError('시뮬레이션 팔 응답 없음' if ctx.sim else '로봇팔 액션 서버 응답 없음')
 
     traj = JointTrajectory(joint_names=ctx.joints, points=[JointTrajectoryPoint(
         positions=positions, time_from_start=Duration(sec=int(duration), nanosec=int(duration % 1 * 1e9)))])
     traj.header.stamp = ctx.get_clock().now().to_msg()
-    ctx.cmd_pub.publish(traj)
+    pub.publish(traj)
 
-    future = ctx.arm.send_goal_async(FollowJointTrajectory.Goal(trajectory=traj))
+    future = arm.send_goal_async(FollowJointTrajectory.Goal(trajectory=traj))
     ctx.wait_until(future.done)
     handle = future.result()
     if not handle.accepted:
