@@ -30,10 +30,11 @@ export function parseClip(text) {
   return { nodes, edges }
 }
 
-// 새 id를 달고 (dx, dy)만큼 옮긴 사본. 붙여넣은 블록만 선택된 상태로
+// 새 id를 달고 (dx, dy)만큼 옮긴 사본. 붙여넣은 블록만 선택된 상태로. makeId(원래 id) → 새 id
 export function instantiate(clip, makeId, dx, dy) {
-  const id = new Map(clip.nodes.map((n) => [n.id, makeId()]))
+  const id = new Map(clip.nodes.map((n) => [n.id, makeId(n.id)]))
   return {
+    id, // 원래 id → 새 id
     nodes: clip.nodes.map((n) => ({
       id: id.get(n.id), type: n.type, data: structuredClone(n.data), position: { x: n.position.x + dx, y: n.position.y + dy }, selected: true,
     })),
@@ -43,4 +44,22 @@ export function instantiate(clip, makeId, dx, dy) {
       return { id: `${source}-${e.sourceHandle || 'out'}-${target}`, source, target, ...(e.sourceHandle ? { sourceHandle: e.sourceHandle } : {}) }
     }),
   }
+}
+
+// 잘라낸 블록을 원래 자리에 되돌릴 때: 바깥 블록과의 원래 연결을 다시 잇고, 잘라낼 때 앞뒤를 이어 붙인 연결(A→B→C에서 B를 자르면 생긴 A→C)은 뺀다.
+// links = { external: 잘라낼 때의 바깥 연결 [{source, target, sourceHandle}], bridges: 잘라내며 새로 생긴 연결 id }
+// idOf: 원래 id → 붙인 블록 id, exists(id): 지금 워크플로에 있는 블록인지 (그새 지워진 블록과의 연결은 건너뜀)
+export function restoreLinks(edges, links, idOf, exists) {
+  const drop = new Set(links.bridges)
+  const out = edges.filter((e) => !drop.has(e.id))
+  let restored = 0
+  for (const e of links.external) {
+    const source = idOf.get(e.source) ?? (exists(e.source) ? e.source : null)
+    const target = idOf.get(e.target) ?? (exists(e.target) ? e.target : null)
+    const handle = e.sourceHandle || null
+    if (!source || !target || out.some((x) => x.source === source && x.target === target && (x.sourceHandle || null) === handle)) continue
+    out.push({ id: `${source}-${handle || 'out'}-${target}`, source, target, ...(handle ? { sourceHandle: handle } : {}) })
+    restored += 1
+  }
+  return { edges: out, restored }
 }

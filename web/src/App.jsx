@@ -4,7 +4,7 @@ import {
 } from '@xyflow/react'
 import { AIBuilder } from './AIBuilder'
 import { anchorOf, BlockPicker } from './BlockPicker'
-import { copyText, instantiate, parseClip } from './clipboard'
+import { copyText, instantiate, parseClip, restoreLinks } from './clipboard'
 import { Hint } from './Hint'
 import { createHistory } from './history'
 import { Icon } from './icons'
@@ -287,7 +287,8 @@ export default function App() {
   // 복사/붙여넣기 (clipboard.js). 복사한 글자는 앱 안에도 들고 있어 붙여넣기 버튼(터치 화면)에 쓴다.
   // doc: 지금 열린 워크플로 번호 (새로 만들기·열기·불러오기마다 바뀜) — 잘라낸 블록을 같은 워크플로에 붙일 때 원래 자리로
   const doc = useRef(0)
-  const clip = useRef({ text: null, pastes: 0, cut: false, doc: 0 })
+  const clip = useRef({ text: null, pastes: 0, cut: false, doc: 0, links: null })
+  const bridged = useRef([]) // 마지막 삭제에서 앞뒤를 이어 붙이며 새로 생긴 연결 id (onNodesDelete가 기록)
   const [clipCount, setClipCount] = useState(0)
   const copyNodes = (cut = false) => {
     const text = copyText(nodes, edges)
@@ -296,7 +297,12 @@ export default function App() {
     clip.current = { text, pastes: 0, cut, doc: doc.current }
     setClipCount(n)
     if (cut) {
-      deleteElements({ nodes: nodes.filter((x) => x.selected && x.type !== 'start').map(({ id }) => ({ id })) })
+      // 되돌려 붙일 때 다시 이을 바깥 연결 (잘라낸 블록 ↔ 남은 블록)
+      const ids = new Set(parseClip(text).nodes.map((x) => x.id))
+      const external = edges.filter((e) => ids.has(e.source) !== ids.has(e.target))
+        .map(({ source, target, sourceHandle }) => ({ source, target, sourceHandle }))
+      deleteElements({ nodes: [...ids].map((id) => ({ id })) })
+        .then(() => { clip.current.links = { external, bridges: bridged.current } })
         .then(() => setNotice({ tone: 'info', text: `블록 ${n}개를 잘라냈습니다. Ctrl+V 또는 붙여넣기 버튼으로 붙이면 이 워크플로에서는 원래 자리로 돌아갑니다.` }))
     } else {
       setNotice({ tone: 'info', text: `블록 ${n}개를 복사했습니다. Ctrl+V 또는 붙여넣기 버튼으로 붙여넣습니다 (다른 워크플로에도 가능).` })
@@ -308,12 +314,15 @@ export default function App() {
     if (!c || !flowRef.current) return false
     let dx
     let dy
+    let back = null
     const mine = text === clip.current.text
     if (mine && c.nodes.every((n) => byId.has(n.id))) {
       clip.current.pastes += 1
       dx = dy = 40 * clip.current.pastes // 원본이 아직 있음: 원본 옆에 계단식으로
     } else if (mine && clip.current.cut && clip.current.doc === doc.current) {
-      dx = dy = 40 * clip.current.pastes++ // 같은 워크플로에서 잘라낸 블록: 처음엔 원래 자리, 또 붙이면 그 옆으로
+      // 같은 워크플로에서 잘라낸 블록: 처음엔 원래 자리·원래 id·원래 연결로 되돌리고, 또 붙이면 그 옆에 사본으로
+      if (!clip.current.pastes) back = clip.current.links
+      dx = dy = 40 * clip.current.pastes++
     } else {
       // 다른 워크플로·다른 탭에서 온 블록: 지금 보이는 화면 가운데로
       const r = flowRef.current.getBoundingClientRect()
@@ -323,10 +332,14 @@ export default function App() {
     }
     const stamp = Date.now()
     let seq = 0
-    const g = instantiate(c, () => `n${stamp}_${seq++}`, dx, dy)
+    const g = instantiate(c, (old) => (back && !byId.has(old) ? old : `n${stamp}_${seq++}`), dx, dy)
+    const r = back ? restoreLinks([...edges, ...g.edges], back, g.id, (x) => byId.has(x)) : { edges: [...edges, ...g.edges], restored: 0 }
     setNodes((ns) => [...ns.map((n) => (n.selected ? { ...n, selected: false } : n)), ...g.nodes])
-    setEdges((es) => [...es, ...g.edges])
-    setNotice({ tone: 'info', text: `블록 ${g.nodes.length}개를 붙여넣었습니다.` })
+    setEdges(r.edges)
+    setNotice({
+      tone: 'info',
+      text: back ? `블록 ${g.nodes.length}개를 원래 자리에 되돌렸습니다${r.restored ? ` (연결 ${r.restored}개 복원)` : ''}.` : `블록 ${g.nodes.length}개를 붙여넣었습니다.`,
+    })
     return true
   }
 
@@ -389,6 +402,7 @@ export default function App() {
   // 들어오는 연결이 하나뿐인 중간 노드를 지우면 앞뒤를 잇는다. 삭제는 되돌릴 수 있다
   const onNodesDelete = (deleted) => {
     const prev = { nodes, edges }
+    const had = new Set(edges.map((e) => e.id))
     const gone = new Set(deleted.map((n) => n.id))
     let next = edges.filter((e) => !gone.has(e.source) && !gone.has(e.target))
     for (const n of deleted) {
@@ -400,6 +414,7 @@ export default function App() {
         }
       }
     }
+    bridged.current = next.filter((e) => !had.has(e.id)).map((e) => e.id)
     setEdges(next)
     setNotice({
       tone: 'info',

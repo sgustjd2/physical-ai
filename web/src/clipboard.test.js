@@ -1,6 +1,6 @@
 // node src/clipboard.test.js — 블록 복사/붙여넣기 형식 확인 (CI web 작업에서 실행)
 import assert from 'node:assert/strict'
-import { copyText, instantiate, parseClip } from './clipboard.js'
+import { copyText, instantiate, parseClip, restoreLinks } from './clipboard.js'
 
 const nodes = [
   { id: 'n0', type: 'start', data: {}, position: { x: 0, y: 0 }, selected: true }, // 시작 노드는 복사하지 않음
@@ -39,5 +39,19 @@ const bad = parseClip(JSON.stringify({
   edges: [{ source: 'x', target: 'gone' }, { source: 'x', target: 'x', sourceHandle: 3 }],
 }))
 assert.deepEqual(bad, { nodes: [{ id: 'x', type: 'wait', data: {}, position: { x: 0, y: 0 } }], edges: [] })
+
+// 잘라낸 블록 되돌리기: A→B→C 에서 B를 자르면 A→C가 생긴다 → 붙여넣으면 A→B, B→C 복원 + A→C 제거
+const links = {
+  external: [{ source: 'A', target: 'B' }, { source: 'B', target: 'C', sourceHandle: 'yes' }, { source: 'B', target: 'D' }],
+  bridges: ['A-out-C'],
+}
+const now = [{ id: 'A-out-C', source: 'A', target: 'C' }, { id: 'C-out-E', source: 'C', target: 'E' }]
+const exists = (x) => ['A', 'C', 'E'].includes(x) // D는 그새 지워짐
+const back = restoreLinks(now, links, new Map([['B', 'B']]), exists)
+assert.deepEqual(back.edges.map((e) => e.id), ['C-out-E', 'A-out-B', 'B-yes-C'])
+assert.equal(back.restored, 2)
+assert.equal(back.edges.find((e) => e.id === 'B-yes-C').sourceHandle, 'yes')
+// 이미 같은 연결이 있으면 중복으로 만들지 않음
+assert.equal(restoreLinks([{ id: 'x', source: 'A', target: 'B2' }], links, new Map([['B', 'B2']]), exists).restored, 1)
 
 console.log('clipboard OK')
