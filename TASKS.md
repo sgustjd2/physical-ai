@@ -76,6 +76,11 @@
 - [x] 실행 기록 탭 (/workflow/log): 시작·종료·AI 판단 근거
 - [x] 단위 테스트(`ros/test_ai.py`, 키 없이) + 스모크 테스트(시뮬레이션 비전 판단, 생성기 응답), CI
 - [x] 화면 검증: 오류 경로, 결과 불러오기(자동 배치·새 문서 이름), 응답 없을 때 다시 시도
+- [x] 카메라: 어떤 카메라를 쓰는지(프로파일 기본 / 블록마다 선택), 연결 상태(연결됨 fps·해상도 / 신호 없음 / 토픽 없음), 실시간 화면 — 오른쪽 '카메라' 탭 + AI 비전 판단 블록 설정 미리보기
+  - [x] 압축 JPEG/PNG 10fps, 원본 Image 2fps(rgb8·bgr8·rgba8·bgra8·mono8), 보이는 동안만 구독, 프레임 변환 검사(`cameraFrames.test.js`)
+  - [x] 모의 카메라(`ros/mock_camera.py`, 프로파일 `mock_camera: true`) + 스모크 테스트
+- [ ] 카메라를 에피소드 녹화·LeRobot 변환에 넣기 (`record_topics`, `dataset.cameras`) — 실제 카메라 정해지면
+- [ ] 트윈 보기에서 오른쪽에 카메라 화면 같이 보기 (3D와 나란히)
 - [ ] 실제 Claude 호출 확인 (GB10 `.env`에 키 필요) — 판단 품질·지연 시간 측정
 - [ ] 인터넷 없는 현장용 로컬 VLM (GB10에서 vLLM/Ollama + Qwen-VL 등) — `ai_client.py`만 교체, 결정 필요
 - [ ] 비전 판단 결과를 에피소드에 같이 저장 (학습 데이터 라벨)

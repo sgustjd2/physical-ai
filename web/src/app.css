@@ -354,7 +354,40 @@ aside {
 aside .viewer:not(.large) { flex: 0 1 300px; height: auto; min-height: 160px; }
 aside > .tabs { display: flex; flex: 1 0 240px; flex-direction: column; min-height: 0; }
 aside > .tabs > [role='tabpanel'] { flex: 1; min-height: 0; overflow-x: hidden; overflow-y: auto; overscroll-behavior: contain; }
-aside .table-wrap, aside .log-list { max-height: none; overflow: visible; }
+aside .table-wrap, aside /* 카메라 실시간 화면 */
+.camera-panel { display: grid; gap: 10px; }
+/* 넓은 화면: 탭에 남은 높이만큼 화면을 키운다 (탭 안에서 스크롤하지 않게). 좁은 화면은 세로로 쌓이므로 4:3 그대로 */
+@media (min-width: 901px) {
+  aside .camera-panel { height: 100%; grid-template-rows: auto minmax(0, 1fr); }
+  aside .camera-panel .camera { grid-template-rows: minmax(0, 1fr) auto; min-height: 0; }
+  aside .camera-panel .camera-frame { aspect-ratio: auto; min-height: 120px; }
+}
+/* 카메라 탭을 보는 동안은 3D 뷰가 먼저 줄어들어 카메라 화면에 높이를 더 준다 */
+aside:has(> .tabs #panel-camera:not([hidden])) > .tabs { flex-basis: 380px; }
+.camera { display: grid; gap: 6px; margin: 0; }
+.camera-frame {
+  position: relative;
+  display: grid;
+  place-items: center;
+  aspect-ratio: 4 / 3;
+  overflow: hidden;
+  background: var(--viewer-bg);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+}
+.camera.compact .camera-frame { aspect-ratio: 16 / 9; }
+.camera-frame canvas { display: block; width: 100%; height: 100%; object-fit: contain; transition: opacity var(--dur) var(--ease); }
+.camera.stale canvas, .camera.error canvas { opacity: 0.45; }
+.camera-empty { position: absolute; inset: 0; display: grid; place-items: center; padding: 12px; color: var(--muted); font-size: var(--text-sm); text-align: center; }
+.camera-status { display: flex; align-items: center; gap: 6px; color: var(--muted); font-size: var(--text-xs); font-variant-numeric: tabular-nums; }
+.camera-status .dot { width: 8px; height: 8px; flex: none; border-radius: 50%; background: var(--muted); }
+.camera.live .camera-status { color: var(--text); }
+.camera.live .camera-status .dot { background: var(--ok); }
+.camera.stale .camera-status, .camera.missing .camera-status { color: var(--warn); }
+.camera.stale .camera-status .dot, .camera.missing .camera-status .dot { background: var(--warn); }
+.camera.error .camera-status { color: var(--danger-text); }
+.camera.error .camera-status .dot { background: var(--danger); }
+.log-list { max-height: none; overflow: visible; }
 
 /* ---- 캔버스 (React Flow 테마를 토큰에 연결) ---- */
 .react-flow {

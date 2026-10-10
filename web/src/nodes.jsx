@@ -4,6 +4,7 @@
 // 추가·삭제는 Dify 편집기 방식: 출력 점의 + (다음 블록), 연결선 가운데 + (사이에 끼우기), 선택한 노드 위 툴바.
 import { createContext, useContext, useState } from 'react'
 import { BaseEdge, EdgeLabelRenderer, getSmoothStepPath, Handle, NodeToolbar, Position, useReactFlow } from '@xyflow/react'
+import { CameraSelect, CameraView, useImageTopics } from './Camera'
 import { Hint } from './Hint'
 import { Icon } from './icons'
 import { currentDeg, moveTo } from './ros'
@@ -13,6 +14,8 @@ export const Specs = createContext({ specs: {}, colorOf: () => 'var(--muted)', l
 export const JointNames = createContext([]) // 로봇 프로파일의 관절 순서
 // 노드·연결선에서 부르는 편집 동작 (App이 채움): openPicker(버튼, {source, port} | {edge}), test, copy, duplicate, remove
 export const NodeActions = createContext({})
+// 로봇 정보: camera = 프로파일 기본 카메라 토픽, connected = 실행기 연결 여부
+export const Robot = createContext({ camera: '', connected: false })
 
 const DEFAULT_OUT = [{ id: 'out', label: '' }]
 export const START = { type: 'start', label: '시작', group: '', icon: 'play', fields: [], outputs: DEFAULT_OUT }
@@ -30,6 +33,7 @@ const splitLabel = (label) => {
 
 const summary = (f, v) => {
   if (f.kind === 'joints') return (v || []).map((x) => (x === '' ? '–' : +x)).join(', ') + '°'
+  if (f.kind === 'camera') return `${f.label} ${v ? v.split('/').filter(Boolean).slice(0, 2).join('/') : '기본'}` // 기본 = 프로파일 camera_topic
   const [name, unit] = splitLabel(f.label)
   const text = f.kind === 'json' ? String(v ?? '').replace(/\s+/g, ' ') : v
   return `${name} ${text === '' || text == null ? '–' : text}${unit && text !== '' ? ` ${unit}` : ''}`
@@ -132,9 +136,26 @@ function Joints({ id, value, duration }) {
   )
 }
 
+// 카메라 고르기 + 그 카메라의 실시간 미리보기 (AI가 무엇을 보는지 확인)
+function CameraField({ id, data, f }) {
+  const { updateNodeData } = useReactFlow()
+  const robot = useContext(Robot)
+  const [list, refresh] = useImageTopics(robot.connected)
+  const value = data[f.key] ?? ''
+  return (
+    <div className="field">
+      <label className="field-label" htmlFor={`${id}-${f.key}`}>{f.label}</label>
+      <CameraSelect id={`${id}-${f.key}`} value={value} onChange={(v) => updateNodeData(id, { [f.key]: v })}
+        list={list} defaultTopic={robot.camera} onRefresh={refresh} />
+      <CameraView topic={value || robot.camera} list={list} compact />
+    </div>
+  )
+}
+
 function Field({ id, data, f }) {
   const { updateNodeData } = useReactFlow()
   if (f.kind === 'joints') return <Joints id={id} value={data[f.key]} duration={data.duration} />
+  if (f.kind === 'camera') return <CameraField id={id} data={data} f={f} />
   // 입력값은 문자열 그대로 저장하고 숫자 변환은 실행기가 한다 (입력 중 '-', '' 같은 값 보존)
   const p = { name: f.key, autoComplete: 'off', value: data[f.key] ?? '', onChange: (e) => updateNodeData(id, { [f.key]: e.target.value }) }
   return (

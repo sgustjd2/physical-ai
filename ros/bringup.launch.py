@@ -4,7 +4,7 @@
 
   항상: rosbridge(웹소켓 :9090), 워크플로 실행기·저장소·AI 시나리오 생성기, 에피소드 녹화기,
         디지털 트윈 팔(/sim — 시뮬레이션 실행용, 쉬는 동안 실제 자세를 따라감)
-  mock: true 이면 모의 팔, urdf 가 있으면 robot_state_publisher(/robot_description, /tf)
+  mock: true 이면 모의 팔, mock_camera: true 이면 모의 카메라(camera_topic), urdf 가 있으면 robot_state_publisher(/robot_description, /tf)
 """
 import json
 import os
@@ -53,6 +53,8 @@ def setup(context):
     ]
     if cfg.get('mock'):
         actions.append(script('mock_arm.py', joints=cfg['joints']))
+    if cfg.get('mock_camera') and cfg.get('camera_topic'):
+        actions.append(script('mock_camera.py', topic=cfg['camera_topic']))
     if cfg.get('urdf'):
         urdf = (profile.parent / cfg['urdf']).read_text(encoding='utf-8')
         actions.append(Node(package='robot_state_publisher', executable='robot_state_publisher',

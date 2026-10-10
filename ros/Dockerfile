@@ -3,7 +3,7 @@ FROM ros:jazzy-ros-base
 RUN apt-get update && apt-get install -y --no-install-recommends \
       ros-jazzy-rosbridge-suite ros-jazzy-control-msgs \
       ros-jazzy-robot-state-publisher ros-jazzy-rosbag2-storage-mcap \
-      python3-pip python3-pil \
+      python3-pip python3-pil python3-numpy \
     && rm -rf /var/lib/apt/lists/*
 # AI 비전 판단·시나리오 생성 (Claude). Ubuntu 24.04 시스템 Python이라 --break-system-packages 필요
 RUN pip3 install --no-cache-dir --break-system-packages anthropic==1.13.0

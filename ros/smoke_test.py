@@ -10,7 +10,7 @@ from pathlib import Path
 import rclpy
 import yaml
 from rclpy.qos import DurabilityPolicy, QoSProfile
-from sensor_msgs.msg import JointState
+from sensor_msgs.msg import CompressedImage, JointState
 from std_msgs.msg import Bool, Empty, String
 
 from nodes.topics import parse_value
@@ -201,5 +201,11 @@ assert not any(st['state'] == 'running' for st in states), states
 estop.publish(Bool(data=False))
 spin_until(lambda: states and not states[-1]['estop'], 5)
 assert run_until_end([wait_node('w')], [{'source': 's', 'target': 'w'}])['state'] == 'done'
+
+# 15) 모의 카메라: 실행기 상태에 기본 카메라가 실리고, 그 토픽으로 JPEG 프레임이 온다 (웹 카메라 탭·AI 비전 판단이 씀)
+frames = []
+node.create_subscription(CompressedImage, states[-1]['camera'], frames.append, 10)
+spin_until(lambda: len(frames) >= 3, 10)
+assert frames[-1].format == 'jpeg' and bytes(frames[-1].data[:2]) == b'\xff\xd8', frames[-1].format  # JPEG 시작 표식
 
 print('smoke test OK')

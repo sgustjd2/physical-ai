@@ -27,6 +27,9 @@ gripper_topic: /gripper/cmd
 # AI 비전 판단 노드가 보는 카메라 (sensor_msgs/Image 또는 CompressedImage)
 camera_topic: /camera/color/image_raw/compressed
 
+# true면 카메라 대신 모의 카메라(ros/mock_camera.py)가 camera_topic으로 장면을 보낸다 (실제 카메라를 달면 지운다)
+mock_camera: true
+
 # 에피소드 녹화 대상 토픽. 카메라를 달면 여기에 추가 (예: /camera/color/image_raw/compressed)
 record_topics:
   - /joint_states

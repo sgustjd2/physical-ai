@@ -5,7 +5,7 @@
   /workflow/stop       ← std_msgs/Empty
   /workflow/estop      ← std_msgs/Bool  true = 비상정지(잠금), false = 해제. 잠긴 동안 실행·조그·홈 이동을 모두 거부
   /workflow/status     → {"state": idle|running|done|error|stopped, "node": id, "active": [id], "mode", "msg",
-                          "joints", "home"(°), "estop"}
+                          "joints", "home"(°), "estop", "camera"(프로파일 기본 카메라 토픽)}
   /workflow/node_types → [{type, label, group, icon, fields, outputs}]  (웹이 팔레트·입력 폼·출력 포트를 만드는 데 씀)
   /workflow/log        → {"entries": [{time, node, text}]}  최근 실행 기록 (시작·종료·AI 판단 근거 등, latched)
 
@@ -74,6 +74,7 @@ class WorkflowExecutor(Node):
         super().__init__('workflow_executor')
         self.joints = self.param('joints', [f'joint{i}' for i in range(1, 7)])
         self.home = list(self.param('home', [0.0] * len(self.joints)))  # 홈 자세 (°), 로봇 프로파일
+        self.camera = self.param('camera_topic', '')  # 웹 카메라 탭·AI 비전 판단의 기본 카메라
         self.estop_topic = self.param('estop_topic', '')  # 있으면 비상정지 상태를 드라이버/PLC 쪽으로도 알림 (Bool)
         self.estopped = False
         self.last_status = ('idle', None, '')
@@ -182,7 +183,8 @@ class WorkflowExecutor(Node):
     def status(self, state, node=None, msg=''):
         self.last_status = (state, node, msg)
         data = {'state': state, 'node': node, 'active': list(self.active), 'msg': msg,
-                'mode': 'sim' if self.sim else 'real', 'joints': self.joints, 'home': self.home, 'estop': self.estopped}
+                'mode': 'sim' if self.sim else 'real', 'joints': self.joints, 'home': self.home, 'estop': self.estopped,
+                'camera': self.camera}
         self.status_pub.publish(String(data=json.dumps(data, ensure_ascii=False)))
 
     def on_estop(self, msg):

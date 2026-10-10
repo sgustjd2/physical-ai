@@ -46,6 +46,7 @@ ctx (workflow_executor.WorkflowExecutor, rclpy Node) 가 제공하는 것:
   ctx.graph                           실행 중인 그래프 (메타데이터 기록용)
 
 field kind: text | number | select(options) | json | joints(관절 수만큼 입력 + 현재 자세 티칭)
+            | camera(이미지 토픽 선택 + 실시간 미리보기, 값이 비면 로봇 프로파일의 camera_topic)
 field/node 의 advanced=True: 비개발자 화면에서는 접어 두는 고급 항목/노드
 """
 import importlib

@@ -84,7 +84,7 @@ export function Tabs({ tabs }) {
       </div>
       {tabs.map((t, i) => (
         <div key={t.id} id={`panel-${t.id}`} role="tabpanel" aria-labelledby={`tab-${t.id}`} hidden={cur !== i}>
-          {t.content}
+          {t.lazy && cur !== i ? null : t.content /* lazy: 보일 때만 그림 (카메라는 숨어 있을 때 영상을 받지 않게) */}
         </div>
       ))}
     </section>

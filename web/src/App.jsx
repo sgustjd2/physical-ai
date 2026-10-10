@@ -3,6 +3,7 @@ import {
   addEdge, Background, Controls, MarkerType, Panel, ReactFlow, useEdgesState, useNodesState, useReactFlow,
 } from '@xyflow/react'
 import { AIBuilder } from './AIBuilder'
+import { CameraPanel } from './Camera'
 import { anchorOf, BlockPicker } from './BlockPicker'
 import { copyText, instantiate, parseClip, restoreLinks } from './clipboard'
 import { Hint } from './Hint'
@@ -12,7 +13,7 @@ import { LibraryMenu } from './Library'
 import {
   episodeTopic, generateTopic, libraryTopic, logTopic, nodeTypesTopic, ros, runWorkflow, sendLibrary, setEstop, statusTopic, stopWorkflow, url,
 } from './ros'
-import { CATEGORY_COLORS, defaults, FlowEdge, FlowNode, Inspector, JointNames, NodeActions, outputsOf, Specs, START } from './nodes'
+import { CATEGORY_COLORS, defaults, FlowEdge, FlowNode, Inspector, JointNames, NodeActions, outputsOf, Robot, Specs, START } from './nodes'
 import { elapsed, Episodes, Jog, Logs, Tabs, Topics, useTick } from './Panels'
 import { ConnectionBanner, EstopBanner, HealthBar, Notice, RobotMode, RunStatus, StepStrip } from './Status'
 import Viewer from './Viewer'
@@ -136,6 +137,7 @@ export default function App() {
   const [specList, setSpecList] = useState(() => store.get('nodeTypes', []))
   const [specsLive, setSpecsLive] = useState(false)
   const names = status.joints || []
+  const robotCtx = useMemo(() => ({ camera: status.camera || '', connected }), [status.camera, connected])
   const estop = !!status.estop
   const running = status.state === 'running'
   const active = status.active || []
@@ -536,6 +538,7 @@ export default function App() {
     <Specs.Provider value={specCtx}>
       <NodeActions.Provider value={actions}>
       <JointNames.Provider value={names}>
+      <Robot.Provider value={robotCtx}>
         <div className="app">
           <a className="skip-link" href="#workspace">워크플로 편집으로 건너뛰기</a>
           <header className="topbar">
@@ -667,6 +670,7 @@ export default function App() {
               <Jog names={names} home={status.home} disabled={!connected || estop || (running && status.node !== 'jog')} />
               <Tabs tabs={[
                 { id: 'rec', label: <>녹화{episode.recording && <span className="tab-dot" aria-label="녹화 중" />}</>, content: <Episodes episode={episode} connected={connected} /> },
+                { id: 'camera', label: '카메라', lazy: true, content: <CameraPanel connected={connected} defaultTopic={status.camera || ''} /> },
                 { id: 'log', label: '기록', content: <Logs entries={log.entries} labelOf={labelOf} /> },
                 { id: 'topics', label: '토픽', content: <Topics connected={connected} /> },
               ]} />
@@ -674,6 +678,7 @@ export default function App() {
           </main>
           {picker && <BlockPicker anchor={picker.anchor} title={picker.title} live={specsLive} onClose={closePicker} onPick={(type) => add(type, picker.at)} />}
         </div>
+      </Robot.Provider>
       </JointNames.Provider>
       </NodeActions.Provider>
     </Specs.Provider>
