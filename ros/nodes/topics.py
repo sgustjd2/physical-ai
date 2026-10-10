@@ -7,6 +7,8 @@ from rosidl_runtime_py.utilities import get_message
 
 from nodes import field, node
 
+GROUP = '장비 연동'
+
 OPS = {'==': operator.eq, '!=': operator.ne, '>': operator.gt,
        '<': operator.lt, '>=': operator.ge, '<=': operator.le}
 

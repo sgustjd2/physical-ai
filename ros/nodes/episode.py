@@ -11,6 +11,8 @@ from std_msgs.msg import String
 
 from nodes import field, node
 
+GROUP = '데이터 수집'
+
 LATCHED = QoSProfile(depth=1, durability=DurabilityPolicy.TRANSIENT_LOCAL)
 
 

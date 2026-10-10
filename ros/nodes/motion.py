@@ -9,6 +9,8 @@ from trajectory_msgs.msg import JointTrajectory, JointTrajectoryPoint
 
 from nodes import field, node
 
+GROUP = '동작'
+
 
 def setup(ctx):
     action = ctx.param('trajectory_action', '/arm_controller/follow_joint_trajectory')

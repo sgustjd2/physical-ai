@@ -114,6 +114,7 @@ def gripper(ctx, d):
     ctx.publish('/gripper/cmd', Bool(data=d['close'] == 'true'))
     ctx.sleep(0.5)
 ```
+파일 맨 위에 `GROUP = '그리퍼'`처럼 분류를 적으면 팔레트에서 그 분류로 묶이고 같은 색을 받습니다.
 `ctx`가 제공하는 헬퍼(`sleep`, `wait_until`, `wait_for`, `publish`, `on_finish`, `param`)와 필드 종류는 [`ros/nodes/__init__.py`](ros/nodes/__init__.py)에 정리되어 있습니다.
 기다릴 때는 반드시 `ctx` 헬퍼를 써야 정지 버튼이 먹습니다.
 

@@ -6,7 +6,7 @@ export const url = new URLSearchParams(location.search).get('ros') || `ws://${lo
 export const ros = new Ros()
 
 // 30Hz로 오는 값은 React state로 두지 않고 여기 두고, 필요한 쪽(3D 렌더 루프 등)이 읽어간다
-export const latest = { joints: {} } // { 조인트이름: rad }
+export const latest = { joints: {}, count: 0, stamp: 0 } // joints: { 조인트이름: rad }, count/stamp: 수신 상태 표시용
 
 const connect = () => ros.connect(url).catch(() => {})
 ros.on('close', () => setTimeout(connect, 2000))
@@ -17,6 +17,8 @@ const json = (name) => topic(name, 'std_msgs/msg/String')
 
 topic('/joint_states', 'sensor_msgs/msg/JointState', { throttle_rate: 33 }).subscribe((m) => {
   m.name.forEach((n, i) => { latest.joints[n] = m.position[i] })
+  latest.count += 1
+  latest.stamp = performance.now()
 })
 
 // 아래 상태 토픽은 모두 latched(transient_local)라 접속하자마자 현재 값이 온다

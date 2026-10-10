@@ -14,6 +14,8 @@
     def setup(ctx):  # 선택: 실행기 시작 시 한 번 (퍼블리셔/액션 클라이언트 생성 등)
         ...
 
+모듈에 GROUP = '분류 이름' 을 두면 웹 팔레트에서 그 분류로 묶이고, 노드가 분류 색을 받는다.
+
 노드 함수는 실행 스레드에서 돌고, 예외를 던지면 워크플로가 error로 멈춘다.
 오래 기다릴 때는 반드시 ctx 헬퍼를 써야 정지 버튼이 먹는다.
 
@@ -31,6 +33,7 @@ field kind: text | number | select(options) | json | joints(관절 수만큼 입
 """
 import importlib
 import pkgutil
+import sys
 
 REGISTRY = {}  # type -> {'run': fn, 'spec': {...}}
 MODULES = []
@@ -47,7 +50,8 @@ def node(type_, label, fields=()):
     def deco(fn):
         if type_ in REGISTRY:
             raise ValueError(f'노드 타입 중복: {type_}')
-        REGISTRY[type_] = {'run': fn, 'spec': {'type': type_, 'label': label, 'fields': list(fields)}}
+        group = getattr(sys.modules.get(fn.__module__), 'GROUP', '기타')
+        REGISTRY[type_] = {'run': fn, 'spec': {'type': type_, 'label': label, 'group': group, 'fields': list(fields)}}
         return fn
     return deco
 
