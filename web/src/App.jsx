@@ -118,6 +118,7 @@ export default function App() {
   const [name, setName] = useState(() => store.get('workflow.name', DEFAULT_NAME))
   const [savedSnap, setSavedSnap] = useState(() => store.get('workflow.savedSnap', null)) // GB10에 마지막으로 저장/연 내용
   const [view, setView] = useState(() => store.get('view', 'edit')) // edit: 워크플로 편집 중심, twin: 디지털 트윈 중심
+  const [camView, setCamView] = useState(() => store.get('cameraView', '')) // 화면으로 볼 카메라 ('' = 프로파일 기본). 카메라 탭과 트윈 보기가 같이 씀
   const [connected, setConnected] = useState(ros.isConnected)
   const [everConnected, setEverConnected] = useState(ros.isConnected)
   const [notice, setNotice] = useState(null)
@@ -201,6 +202,7 @@ export default function App() {
   useEffect(() => store.set('workflow.name', name), [name])
   useEffect(() => store.set('workflow.savedSnap', savedSnap), [savedSnap])
   useEffect(() => store.set('view', view), [view])
+  useEffect(() => store.set('cameraView', camView), [camView])
 
   // 되돌리기/다시 하기 (history.js): 그래프·이름의 변화를 여기 한 곳에서 기록하므로 편집 동작마다 기록 코드가 필요 없다
   const histKey = useMemo(() => JSON.stringify({ g: toGraph(nodes, edges), name }), [nodes, edges, name])
@@ -669,13 +671,13 @@ export default function App() {
               {/* 편집 보기: 3D / 트윈 보기: 3D가 가운데 크게 → 이 칸에는 실제 카메라 (트윈과 실물을 나란히) */}
               {view === 'edit' ? viewer : (
                 <section className="twin-camera" aria-label="카메라 실시간 화면">
-                  <CameraPanel id="twin-camera-view" connected={connected} defaultTopic={status.camera || ''} bare />
+                  <CameraPanel id="twin-camera-view" connected={connected} defaultTopic={status.camera || ''} value={camView} onChange={setCamView} bare />
                 </section>
               )}
               <Jog names={names} home={status.home} disabled={!connected || estop || (running && status.node !== 'jog')} />
               <Tabs tabs={[
                 { id: 'rec', label: <>녹화{episode.recording && <span className="tab-dot" aria-label="녹화 중" />}</>, content: <Episodes episode={episode} connected={connected} /> },
-                { id: 'camera', label: '카메라', lazy: true, content: <CameraPanel connected={connected} defaultTopic={status.camera || ''} /> },
+                { id: 'camera', label: '카메라', lazy: true, content: <CameraPanel connected={connected} defaultTopic={status.camera || ''} value={camView} onChange={setCamView} /> },
                 { id: 'log', label: '기록', content: <Logs entries={log.entries} labelOf={labelOf} /> },
                 { id: 'topics', label: '토픽', content: <Topics connected={connected} /> },
               ]} />

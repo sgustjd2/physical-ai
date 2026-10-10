@@ -118,11 +118,11 @@ export function CameraView({ topic, list, compact }) {
 }
 
 // 고른 카메라의 실시간 화면 (보기용, 블록 설정은 바꾸지 않음). 오른쪽 '카메라' 탭과 트윈 보기의 오른쪽 위 칸에서 쓴다.
+// value/onChange: 고른 카메라 ('' = 기본). App이 들고 있어 두 곳이 같은 카메라를 보고, 새로고침해도 유지된다
 // bare: 이름·도움말 줄 없이 카메라 선택만 (트윈 보기처럼 화면에 높이를 더 줄 때)
-export function CameraPanel({ id = 'camera-view', connected, defaultTopic, bare }) {
+export function CameraPanel({ id = 'camera-view', connected, defaultTopic, value, onChange, bare }) {
   const [list, refresh] = useImageTopics(connected)
-  const [sel, setSel] = useState('')
-  const select = <CameraSelect id={id} value={sel} onChange={setSel} list={list} defaultTopic={defaultTopic} onRefresh={refresh} label={bare ? '카메라 선택' : undefined} />
+  const select = <CameraSelect id={id} value={value} onChange={onChange} list={list} defaultTopic={defaultTopic} onRefresh={refresh} label={bare ? '카메라 선택' : undefined} />
   return (
     <div className="camera-panel">
       <h2 className="sr-only">카메라</h2>
@@ -137,7 +137,7 @@ export function CameraPanel({ id = 'camera-view', connected, defaultTopic, bare 
           {select}
         </div>
       )}
-      <CameraView topic={sel || defaultTopic} list={list} />
+      <CameraView topic={value || defaultTopic} list={list} />
     </div>
   )
 }
