@@ -76,6 +76,7 @@ class MockArm(Node):
                 self.pos = [p + (q - p) * s for p, q in zip(start, target)]
                 time.sleep(0.01)
             prev_t = t_end
+        self.publish()  # 끝 자세를 확실히 한 번 보냄: 타이머가 밀리면 끝나자마자 실제 팔 따라가기(mirror)가 덮어써 목표 도달이 안 보임
         goal.succeed()
         return FollowJointTrajectory.Result()
 
