@@ -118,7 +118,8 @@ class Recorder(Node):
         self.stop_play()
         remaps = [f'{t}:={REPLAY}{t}' for t in e.get('topics', [])]
         self.player = subprocess.Popen(
-            ['ros2', 'bag', 'play', str(d / 'bag'), '--disable-keyboard-controls', *(['--remap', *remaps] if remaps else [])],
+            # --delay: 새로 뜬 재생기를 구독자(웹의 rosbridge 등)가 찾을 시간을 줌. 없으면 짧은 녹화는 앞부분이나 전부를 놓침
+            ['ros2', 'bag', 'play', str(d / 'bag'), '--disable-keyboard-controls', '--delay', '1', *(['--remap', *remaps] if remaps else [])],
             stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
         self.playing = {'name': d.name, 'duration': e.get('duration')}
 
