@@ -13,6 +13,14 @@ import { latest, onRobotInfo, robotInfo } from './ros'
 import { packageResolver, sceneObject } from './scene3d'
 
 const HOME = { pos: [1.4, 1.0, 1.6], target: [0, 0.45, 0] }
+const VIEWS = {
+  home: HOME,
+  top: { pos: [0.3, 2.6, 0.01], target: [0.3, 0, 0] }, // 작업 셀을 위에서 (z 0.01: 바로 위면 회전 기준이 흔들림)
+  front: { pos: [2.4, 0.6, 0], target: [0.2, 0.45, 0] }, // 로봇 앞쪽에서
+  side: { pos: [0.3, 0.6, -2.4], target: [0.3, 0.45, 0] }, // 로봇 왼쪽에서
+}
+const VIEW_LABEL = [['top', '위'], ['front', '앞'], ['side', '옆']]
+const KEY_HELP = '화살표로 돌리기, + − 로 확대·축소, 0 으로 처음 시점'
 const REACHED_DEG = 0.5
 
 // ghost: { 관절이름: rad } | null  (명시 목표). followCommand: 명시 목표가 없을 때 실행 중 이동 명령을 고스트로
@@ -50,8 +58,7 @@ export default function Viewer({ stale, ghost, followCommand, simRun, replay, la
     const renderer = new THREE.WebGLRenderer({ antialias: true })
     renderer.setPixelRatio(devicePixelRatio)
     el.prepend(renderer.domElement)
-    renderer.domElement.setAttribute('role', 'img')
-    renderer.domElement.setAttribute('aria-label', '로봇 3D 뷰어')
+    renderer.domElement.setAttribute('aria-label', `로봇 3D 뷰어 — ${KEY_HELP}`)
 
     const scene = new THREE.Scene()
     scene.add(new THREE.HemisphereLight(0xffffff, 0x404040, 2.2))
@@ -89,11 +96,31 @@ export default function Viewer({ stale, ghost, followCommand, simRun, replay, la
 
     const camera = new THREE.PerspectiveCamera(45, 1, 0.01, 50)
     const controls = new OrbitControls(camera, renderer.domElement)
-    resetRef.current = () => {
-      camera.position.set(...HOME.pos)
-      controls.target.set(...HOME.target)
+    resetRef.current = (name = 'home') => {
+      camera.position.set(...VIEWS[name].pos)
+      controls.target.set(...VIEWS[name].target)
     }
     resetRef.current()
+    // 키보드로 3D 조작 (마우스·터치 없이도): 화살표 = 돌리기(15°), +/− = 확대·축소, 0·Home = 처음 시점
+    const canvasEl = renderer.domElement
+    canvasEl.tabIndex = 0
+    canvasEl.setAttribute('role', 'application')
+    canvasEl.setAttribute('aria-roledescription', '3D 보기')
+    const onKey = (e) => {
+      if (e.key === '0' || e.key === 'Home') { resetRef.current(); e.preventDefault(); return }
+      const sph = new THREE.Spherical().setFromVector3(camera.position.clone().sub(controls.target))
+      const step = THREE.MathUtils.degToRad(15)
+      if (e.key === 'ArrowLeft') sph.theta -= step
+      else if (e.key === 'ArrowRight') sph.theta += step
+      else if (e.key === 'ArrowUp') sph.phi = Math.max(0.05, sph.phi - step)
+      else if (e.key === 'ArrowDown') sph.phi = Math.min(Math.PI / 2, sph.phi + step) // 바닥 아래로는 안 감
+      else if (e.key === '+' || e.key === '=') sph.radius = Math.max(0.4, sph.radius * 0.85)
+      else if (e.key === '-' || e.key === '_') sph.radius = Math.min(8, sph.radius / 0.85)
+      else return
+      e.preventDefault()
+      camera.position.copy(controls.target).add(new THREE.Vector3().setFromSpherical(sph))
+    }
+    canvasEl.addEventListener('keydown', onKey)
 
     // 3D 파일 불러오기 (STL / GLB·GLTF). 실패하면 뷰어에 알림
     const stl = new STLLoader()
@@ -174,7 +201,7 @@ export default function Viewer({ stale, ghost, followCommand, simRun, replay, la
       ghostBot.visible = false
       scene.add(robot, ghostBot)
       setRobotName(robot.robotName || '로봇')
-      renderer.domElement.setAttribute('aria-label', `${robot.robotName || '로봇'} 3D 자세`)
+      renderer.domElement.setAttribute('aria-label', `${robot.robotName || '로봇'} 3D 자세 — ${KEY_HELP}`)
     }
     // 메시 위치(/robot_scene)를 받은 뒤에 그린다. 실행기가 /robot_scene 을 안 보내면(예전 버전) 1.5초 뒤 그냥 그림
     let waitScene
@@ -256,6 +283,7 @@ export default function Viewer({ stale, ghost, followCommand, simRun, replay, la
       offInfo()
       scheme.removeEventListener('change', theme)
       narrow.removeEventListener('change', touchMode)
+      canvasEl.removeEventListener('keydown', onKey)
       clearInterval(tick)
       cancelAnimationFrame(raf)
       ro.disconnect()
@@ -292,7 +320,14 @@ export default function Viewer({ stale, ghost, followCommand, simRun, replay, la
         onClick={() => setShowPath((v) => { try { localStorage.setItem('viewer.path', v ? '0' : '1') } catch { /* 저장 불가 */ } return !v })}>
         <Icon name="route" />
       </button>
-      <button className="icon-btn viewer-reset" onClick={() => resetRef.current()} aria-label="시점 초기화" title="시점 초기화">
+      {large && (
+        <div className="viewer-views" role="group" aria-label="시점">
+          {VIEW_LABEL.map(([v, label]) => (
+            <button key={v} onClick={() => resetRef.current(v)} aria-label={`${label}에서 보기`} title={`${label}에서 보기`}>{label}</button>
+          ))}
+        </div>
+      )}
+      <button className="icon-btn viewer-reset" onClick={() => resetRef.current()} aria-label="시점 초기화" title={`시점 초기화 (3D를 눌러 ${KEY_HELP})`}>
         <Icon name="view" />
       </button>
     </div>
