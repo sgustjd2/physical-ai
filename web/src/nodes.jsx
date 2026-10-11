@@ -14,8 +14,8 @@ export const Specs = createContext({ specs: {}, colorOf: () => 'var(--muted)', l
 export const JointNames = createContext([]) // 로봇 프로파일의 관절 순서
 // 노드·연결선에서 부르는 편집 동작 (App이 채움): openPicker(버튼, {source, port} | {edge}), test, copy, duplicate, remove
 export const NodeActions = createContext({})
-// 로봇 정보: camera = 프로파일 기본 카메라 토픽, connected = 실행기 연결 여부
-export const Robot = createContext({ camera: '', connected: false })
+// 로봇 정보: camera = 프로파일 기본 카메라 토픽, connected = 실행기 연결 여부, datasets = 재생할 수 있는 데이터셋 (null = 아직 모름)
+export const Robot = createContext({ camera: '', connected: false, datasets: null })
 // 실행 전 점검 결과: node id → [{ level, text }] (check.js)
 export const Issues = createContext(new Map())
 
@@ -162,8 +162,38 @@ function CameraField({ id, data, f }) {
   )
 }
 
+// 데이터셋·에피소드 고르기 (녹화 동작 재생). 목록은 실행기가 data/lerobot 을 훑어 보낸다
+function DatasetField({ id, data, f }) {
+  const { updateNodeData } = useReactFlow()
+  const { datasets } = useContext(Robot)
+  const value = data[f.key] ?? ''
+  const set = (v) => updateNodeData(id, f.kind === 'dataset' ? { [f.key]: v, episode: 0 } : { [f.key]: v })
+  const ds = datasets?.find((d) => d.name === (f.kind === 'dataset' ? value : data.dataset))
+  const fid = `${id}-${f.key}`
+  let options
+  if (f.kind === 'dataset') {
+    options = [<option key="" value="">{datasets === null ? '목록을 받는 중…' : datasets.length ? '데이터셋 선택…' : '재생할 데이터셋 없음'}</option>,
+      ...(datasets || []).map((d) => <option key={d.name} value={d.name}>{d.name} (에피소드 {d.episodes.length}개)</option>)]
+    if (value && datasets && !ds) options.push(<option key="missing" value={value}>{value} (없음)</option>)
+  } else {
+    options = (ds?.episodes || []).map((e) => <option key={e.index} value={e.index}>{e.index} · {e.task || '작업 설명 없음'} ({e.seconds}s)</option>)
+    if (!ds) options = [<option key="" value={value}>먼저 데이터셋을 고르세요</option>]
+    else if (!ds.episodes.some((e) => String(e.index) === String(value))) options.unshift(<option key="missing" value={value}>{value} (없음)</option>)
+  }
+  return (
+    <label className="field" htmlFor={fid}>
+      <span className="field-label">{f.label}</span>
+      <select id={fid} name={f.key} value={value} disabled={f.kind === 'episode' && !ds} onChange={(e) => set(e.target.value)} translate="no">{options}</select>
+      {f.kind === 'dataset' && datasets?.length === 0 && (
+        <span className="hint-text">녹화를 LeRobot으로 변환하고 check_dataset.py 점검을 통과하면 여기에 나타납니다.</span>
+      )}
+    </label>
+  )
+}
+
 function Field({ id, data, f }) {
   const { updateNodeData } = useReactFlow()
+  if (f.kind === 'dataset' || f.kind === 'episode') return <DatasetField id={id} data={data} f={f} />
   if (f.kind === 'joints') return <Joints id={id} value={data[f.key]} duration={data.duration} />
   if (f.kind === 'camera') return <CameraField id={id} data={data} f={f} />
   // 입력값은 문자열 그대로 저장하고 숫자 변환은 실행기가 한다 (입력 중 '-', '' 같은 값 보존)

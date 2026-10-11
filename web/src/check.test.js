@@ -9,6 +9,7 @@ const specs = {
   wait: { fields: [{ key: 'sec', label: '시간 (s)', kind: 'number' }], outputs: [{ id: 'out' }] },
   join: { fields: [], outputs: [{ id: 'out' }] },
   loop: { fields: [{ key: 'count', label: '반복 횟수', kind: 'number' }], outputs: [{ id: 'repeat' }, { id: 'done' }] },
+  play_episode: { fields: [{ key: 'dataset', label: '데이터셋', kind: 'dataset' }, { key: 'episode', label: '에피소드', kind: 'episode' }], outputs: [{ id: 'out' }], resource: 'arm' },
 }
 const n = (id, type, data = {}) => ({ id, type, data })
 const e = (source, target, sourceHandle) => ({ source, target, ...(sourceHandle ? { sourceHandle } : {}) })
@@ -49,5 +50,9 @@ assert.deepEqual(levels(checkGraph(g, {}, 3)), ['warn:w'])
 // 반복으로 되돌아가는 연결이 있어도 끝남
 g = { nodes: [n('s', 'start'), n('l', 'loop', { count: 2 }), mj('a')], edges: [e('s', 'l'), e('l', 'a', 'repeat'), e('a', 'l')] }
 assert.deepEqual(checkGraph(g, specs, 3), [])
+
+// 녹화 동작 재생: 데이터셋을 안 고르면 오류, 고르면 통과 (에피소드 칸은 숫자 검사 대상 아님)
+assert.deepEqual(checkGraph({ nodes: [n('s', 'start'), n('p', 'play_episode', { dataset: '', episode: 0 })], edges: [e('s', 'p')] }, specs, 3).map((i) => i.text), ["'데이터셋'을 고르세요"])
+assert.deepEqual(checkGraph({ nodes: [n('s', 'start'), n('p', 'play_episode', { dataset: 'motion', episode: '0' })], edges: [e('s', 'p')] }, specs, 3), [])
 
 console.log('check OK')

@@ -7,7 +7,9 @@ from action_msgs.msg import GoalStatus
 from builtin_interfaces.msg import Duration
 from control_msgs.action import FollowJointTrajectory
 from rclpy.action import ActionClient
+from rclpy.qos import DurabilityPolicy, QoSProfile
 from sensor_msgs.msg import JointState
+from std_msgs.msg import String
 from trajectory_msgs.msg import JointTrajectory, JointTrajectoryPoint
 
 from nodes import field, node
@@ -31,6 +33,38 @@ def setup(ctx):
     ctx.joint_now = {'real': {}, 'sim': {}}
     ctx.create_subscription(JointState, '/joint_states', lambda m: ctx.joint_now['real'].update(zip(m.name, m.position)), 10)
     ctx.create_subscription(JointState, '/sim/joint_states', lambda m: ctx.joint_now['sim'].update(zip(m.name, m.position)), 10)
+    publish_datasets(ctx)
+
+
+def publish_datasets(ctx):
+    """재생할 수 있는 데이터셋 목록 → /workflow/datasets (latched) [{name, episodes: [{index, task, seconds}]}].
+    웹의 '녹화 동작 재생' 블록이 드롭다운으로 쓴다. 5초마다 훑고 바뀌었을 때만 보낸다 (파일은 바뀐 것만 다시 읽음)."""
+    pub = ctx.create_publisher(String, '/workflow/datasets', QoSProfile(depth=1, durability=DurabilityPolicy.TRANSIENT_LOCAL))
+    cache, last = {}, [None]
+
+    def scan():
+        out = []
+        for d in sorted(DATASETS.glob('*/replay')):
+            eps = []
+            for p in sorted(d.glob('episode_*.json')):
+                try:
+                    mtime = p.stat().st_mtime
+                    if cache.get(p, (None,))[0] != mtime:
+                        r = json.loads(p.read_text(encoding='utf-8'))
+                        cache[p] = (mtime, {'index': int(p.stem.rsplit('_', 1)[1]), 'task': r.get('task', ''),
+                                            'seconds': round(len(r.get('actions', [])) / (r.get('fps') or 30), 1)})
+                except (OSError, ValueError):
+                    continue
+                eps.append(cache[p][1])
+            if eps:
+                out.append({'name': d.parent.name, 'episodes': eps})
+        data = json.dumps(out, ensure_ascii=False)
+        if data != last[0]:
+            last[0] = data
+            pub.publish(String(data=data))
+
+    scan()
+    ctx.create_timer(5.0, scan)
 
 
 @node('move_j', 'MoveJ 관절 이동', desc='티칭한 자세(관절 각도)로 팔을 움직입니다', resource='arm', fields=[
@@ -50,8 +84,8 @@ def move_home(ctx, d):
 
 @node('play_episode', '녹화 동작 재생', resource='arm',
       desc='학습 데이터셋으로 변환한 시연 동작을 그대로 다시 움직입니다 (시뮬레이션이면 트윈에서 확인)', fields=[
-          field('dataset', '데이터셋 이름 (data/lerobot/ 아래 폴더)', 'text', ''),
-          field('episode', '에피소드 번호', 'number', 0),
+          field('dataset', '데이터셋', 'dataset', ''),
+          field('episode', '에피소드', 'episode', 0),
           field('speed', '재생 속도 (배)', 'number', 1, advanced=True),
       ])
 def play_episode(ctx, d):

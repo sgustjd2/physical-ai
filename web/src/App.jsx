@@ -12,7 +12,7 @@ import { createHistory } from './history'
 import { Icon } from './icons'
 import { LibraryMenu } from './Library'
 import {
-  episodeTopic, generateTopic, libraryTopic, logTopic, nodeTypesTopic, ros, runWorkflow, sendLibrary, setEstop, statusTopic, stopWorkflow, url,
+  datasetsTopic, episodeTopic, generateTopic, libraryTopic, logTopic, nodeTypesTopic, ros, runWorkflow, sendLibrary, setEstop, statusTopic, stopWorkflow, url,
 } from './ros'
 import { CATEGORY_COLORS, defaults, FlowEdge, FlowNode, Inspector, Issues, JointNames, NodeActions, outputsOf, Robot, Specs, START } from './nodes'
 import { elapsed, Episodes, Jog, Logs, Tabs, Topics, useTick } from './Panels'
@@ -135,11 +135,12 @@ export default function App() {
   const library = useJsonTopic(libraryTopic, { items: [], pending: true })
   const log = useJsonTopic(logTopic, { entries: [] })
   const gen = useJsonTopic(generateTopic, {})
+  const datasets = useJsonTopic(datasetsTopic, null) // null = 아직 못 받음
   // 노드 타입은 마지막으로 받은 것을 저장해 두어, 연결이 끊겨도 이름·색이 유지되게 한다
   const [specList, setSpecList] = useState(() => store.get('nodeTypes', []))
   const [specsLive, setSpecsLive] = useState(false)
   const names = status.joints || []
-  const robotCtx = useMemo(() => ({ camera: status.camera || '', connected }), [status.camera, connected])
+  const robotCtx = useMemo(() => ({ camera: status.camera || '', connected, datasets }), [status.camera, connected, datasets])
   const estop = !!status.estop
   const running = status.state === 'running'
   const active = status.active || []

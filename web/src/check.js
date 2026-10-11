@@ -1,10 +1,12 @@
 // 실행 전 점검: 실행하다 멈출 문제를 편집하는 동안 미리 찾는다 (React와 무관 → check.test.js로 확인).
 // 반환: [{ level: 'error' | 'warn', node, text }]. error가 있으면 실행·시뮬레이션을 막는다.
-//   error  같은 장비(resource)를 동시에 쓰는 병렬 갈래, 관절 값·숫자 칸 오류, 서버에 없는 블록(실행 경로 안)
+//   error  같은 장비(resource)를 동시에 쓰는 병렬 갈래, 관절 값·숫자 칸 오류, 고르지 않은 데이터셋, 서버에 없는 블록(실행 경로 안)
 //   warn   시작과 이어지지 않아 실행되지 않는 블록
 // specs: type → 블록 선언 (빈 객체면 아직 못 받은 것 → 타입·칸 검사는 건너뜀), jointCount: 0이면 관절 수 검사 건너뜀
 const RESOURCE = { arm: '로봇팔을', gripper: '그리퍼를' } // 장비 이름 + 조사
 const isNum = (v) => v !== '' && v != null && Number.isFinite(Number(v))
+// 목적격 조사: 마지막 글자에 받침이 있으면 '을', 없으면 '를'
+const eul = (w) => { const c = w.charCodeAt(w.length - 1); return c >= 0xac00 && c <= 0xd7a3 && (c - 0xac00) % 28 ? '을' : '를' }
 
 export function checkGraph({ nodes, edges }, specs, jointCount = 0) {
   const issues = []
@@ -35,6 +37,7 @@ export function checkGraph({ nodes, edges }, specs, jointCount = 0) {
     for (const f of spec.fields) {
       const v = n.data?.[f.key]
       if (f.kind === 'number' && !isNum(v)) issues.push({ level: 'error', node: n.id, text: `'${f.label}'에 숫자를 넣으세요` })
+      if (f.kind === 'dataset' && !v) issues.push({ level: 'error', node: n.id, text: `'${f.label}'${eul(f.label)} 고르세요` })
       if (f.kind === 'joints') {
         const vals = Array.isArray(v) ? v : []
         if (vals.some((x) => !isNum(x))) issues.push({ level: 'error', node: n.id, text: '비어 있거나 숫자가 아닌 관절 값이 있습니다' })

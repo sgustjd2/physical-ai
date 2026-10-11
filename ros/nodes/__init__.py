@@ -47,6 +47,7 @@ ctx (workflow_executor.WorkflowExecutor, rclpy Node) 가 제공하는 것:
 
 field kind: text | number | select(options) | json | joints(관절 수만큼 입력 + 현재 자세 티칭)
             | camera(이미지 토픽 선택 + 실시간 미리보기, 값이 비면 로봇 프로파일의 camera_topic)
+            | dataset(재생할 수 있는 학습 데이터셋 선택, /workflow/datasets) | episode(같은 노드의 dataset 칸에서 고른 데이터셋의 에피소드 번호)
 field/node 의 advanced=True: 비개발자 화면에서는 접어 두는 고급 항목/노드
 """
 import importlib

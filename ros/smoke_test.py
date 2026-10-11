@@ -273,5 +273,11 @@ assert all(abs(joints[n] - before[n]) < 0.01 for n in before), '시뮬레이션�
 end = run_until_end([{'id': 'p', 'type': 'play_episode', 'data': {'dataset': 'nope', 'episode': 0}}],
                     [{'source': 's', 'target': 'p'}], mode='sim')
 assert end['state'] == 'error' and 'smoke' in end['msg'], end['msg']  # '있는 것: smoke' 를 알려 줌
+# 데이터셋 목록 (웹 드롭다운): 5초마다 훑어 /workflow/datasets 로
+datasets = []
+node.create_subscription(String, '/workflow/datasets', lambda m: datasets.append(json.loads(m.data)), LATCHED)
+spin_until(lambda: datasets and any(d['name'] == 'smoke' for d in datasets[-1]), 10)
+smoke_ds = next(d for d in datasets[-1] if d['name'] == 'smoke')
+assert smoke_ds['episodes'] == [{'index': 0, 'task': '스모크 재생', 'seconds': 1.1}], smoke_ds
 
 print('smoke test OK')

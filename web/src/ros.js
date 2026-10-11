@@ -46,6 +46,7 @@ export const robotDescription = json('/robot_description') // URDF (robots/<로�
 export const libraryTopic = json('/workflow/library') // GB10에 저장된 워크플로 목록 (ros/workflow_store.py)
 export const logTopic = json('/workflow/log') // 실행 기록: 시작·종료·AI 판단 근거
 export const generateTopic = json('/workflow/generate') // AI 시나리오 생성 결과 (ros/scenario_ai.py)
+export const datasetsTopic = json('/workflow/datasets') // 재생할 수 있는 학습 데이터셋 (ros/nodes/motion.py)
 
 const runTopic = json('/workflow/run')
 const stopTopic = topic('/workflow/stop', 'std_msgs/msg/Empty')
