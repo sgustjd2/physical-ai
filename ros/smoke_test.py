@@ -73,6 +73,8 @@ spin_until(lambda: run.get_subscription_count() and estop.get_subscription_count
            and joints and states and episode and types and library and sim_j1 and gen, 30)
 assert {'move_j', 'move_home', 'wait', 'wait_topic', 'publish', 'episode_start', 'episode_end', 'if', 'loop', 'join', 'gripper', 'vlm_check'} <= {t['type'] for t in types}
 assert next(t for t in types if t['type'] == 'if')['outputs'] == [{'id': 'yes', 'label': '예'}, {'id': 'no', 'label': '아니오'}]
+# 장비 선언: 웹의 실행 전 점검이 같은 장비를 동시에 쓰는 병렬 갈래를 막는 데 씀
+assert {t['type']: t.get('resource') for t in types if t.get('resource')} == {'move_j': 'arm', 'move_home': 'arm', 'gripper': 'gripper'}
 
 # 1) start → move_j → wait_topic(외부 신호) → publish → 끝
 target = [10, 20, 30, 0, 45, 0]

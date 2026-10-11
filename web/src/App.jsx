@@ -5,6 +5,7 @@ import {
 import { AIBuilder } from './AIBuilder'
 import { CameraPanel } from './Camera'
 import { anchorOf, BlockPicker } from './BlockPicker'
+import { checkGraph } from './check'
 import { copyText, instantiate, parseClip, restoreLinks } from './clipboard'
 import { Hint } from './Hint'
 import { createHistory } from './history'
@@ -13,7 +14,7 @@ import { LibraryMenu } from './Library'
 import {
   episodeTopic, generateTopic, libraryTopic, logTopic, nodeTypesTopic, ros, runWorkflow, sendLibrary, setEstop, statusTopic, stopWorkflow, url,
 } from './ros'
-import { CATEGORY_COLORS, defaults, FlowEdge, FlowNode, Inspector, JointNames, NodeActions, outputsOf, Robot, Specs, START } from './nodes'
+import { CATEGORY_COLORS, defaults, FlowEdge, FlowNode, Inspector, Issues, JointNames, NodeActions, outputsOf, Robot, Specs, START } from './nodes'
 import { elapsed, Episodes, Jog, Logs, Tabs, Topics, useTick } from './Panels'
 import { ConnectionBanner, EstopBanner, HealthBar, Notice, RobotMode, RunStatus, StepStrip } from './Status'
 import Viewer from './Viewer'
@@ -480,7 +481,34 @@ export default function App() {
     const nm = name.trim() || DEFAULT_NAME
     pendingSave.current = { id: sendLibrary('save', { name: nm, graph: toGraph(nodes, edges) }), snap: snapshot(nodes, edges), name: nm }
   }
-  const dirty = savedSnap !== snapshot(nodes, edges)
+  const snap = snapshot(nodes, edges)
+  const dirty = savedSnap !== snap
+
+  // 실행 전 점검 (check.js). 위치는 보지 않으므로 드래그 중에는 다시 계산하지 않는다
+  const issues = useMemo(() => checkGraph({ nodes, edges }, specs, names.length), [snap, specs, names.length]) // eslint-disable-line react-hooks/exhaustive-deps
+  const issueMap = useMemo(() => {
+    const m = new Map()
+    for (const i of issues) m.set(i.node, [...(m.get(i.node) || []), i])
+    return m
+  }, [issues])
+  const errors = issues.filter((i) => i.level === 'error')
+  // 문제 있는 블록으로 이동해 선택 (오류 먼저). 트윈 보기면 편집 보기로 바꾼다
+  const goToIssue = () => {
+    const first = errors[0] || issues[0]
+    if (!first) return
+    setView('edit')
+    setNodes((ns) => ns.map((n) => (n.selected === (n.id === first.node) ? n : { ...n, selected: n.id === first.node })))
+    requestAnimationFrame(() => fitView({ nodes: [{ id: first.node }], maxZoom: 1, duration: 300 }))
+  }
+  // 오류가 있으면 실행하지 않고 첫 문제로 데려간다 (실행 도중 멈추는 대신 미리)
+  const tryRun = (mode) => {
+    if (errors.length) {
+      goToIssue()
+      setNotice({ tone: 'error', text: `실행 전 점검에서 문제 ${errors.length}건: ${labelOf(errors[0].node)} — ${errors[0].text}` })
+      return
+    }
+    runWorkflow(runGraph(), mode)
+  }
 
   const runGraph = (ns = nodes, es = edges) => ({
     nodes: ns.map(({ id, type, data }) => ({ id, type, data })),
@@ -541,6 +569,7 @@ export default function App() {
       <NodeActions.Provider value={actions}>
       <JointNames.Provider value={names}>
       <Robot.Provider value={robotCtx}>
+      <Issues.Provider value={issueMap}>
         <div className="app">
           <a className="skip-link" href="#workspace">워크플로 편집으로 건너뛰기</a>
           <header className="topbar">
@@ -553,11 +582,11 @@ export default function App() {
             {status.msg && <span className="topbar-msg error-text" title={status.msg}>{status.msg}</span>}
             <span className="spacer" />
             <div className="actions">
-              <button className="sim-btn" onClick={() => runWorkflow(runGraph(), 'sim')} disabled={!connected || running || estop}
+              <button className="sim-btn" onClick={() => tryRun('sim')} disabled={!connected || running || estop}
                 title="디지털 트윈에서만 실행합니다. 실제 로봇·장비는 움직이지 않습니다">
                 <Icon name="sim" />시뮬레이션
               </button>
-              <button className="start-btn" onClick={() => runWorkflow(runGraph(), 'real')} disabled={!connected || running || estop}
+              <button className="start-btn" onClick={() => tryRun('real')} disabled={!connected || running || estop}
                 title={!connected ? '실행기와 연결되지 않음' : estop ? '비상정지 상태: 해제한 뒤 실행' : running ? '실행 중' : '실제 로봇으로 실행'}>
                 <Icon name="play" />실행
               </button>
@@ -585,6 +614,12 @@ export default function App() {
                   {dirty ? '저장 안 됨' : '저장됨'}
                 </span>
                 <span className="doc-meta">{steps.length}단계</span>
+                {issues.length > 0 && (
+                  <button className={`doc-issues ${errors.length ? 'error' : 'warn'}`} onClick={goToIssue}
+                    title={errors.length ? '실행 전 점검: 고쳐야 실행할 수 있습니다. 누르면 첫 문제로 이동' : '실행되지 않는 블록이 있습니다. 누르면 이동'}>
+                    <Icon name="alert" />{errors.length ? `문제 ${errors.length}건` : `주의 ${issues.length}건`}
+                  </button>
+                )}
                 <span className="spacer" />
                 <div className="segmented view-switch" role="radiogroup" aria-label="보기">
                   <button role="radio" aria-checked={view === 'edit'} onClick={() => setView('edit')}>편집</button>
@@ -685,6 +720,7 @@ export default function App() {
           </main>
           {picker && <BlockPicker anchor={picker.anchor} title={picker.title} live={specsLive} onClose={closePicker} onPick={(type) => add(type, picker.at)} />}
         </div>
+      </Issues.Provider>
       </Robot.Provider>
       </JointNames.Provider>
       </NodeActions.Provider>

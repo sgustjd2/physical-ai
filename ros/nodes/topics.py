@@ -37,7 +37,7 @@ def msg_class(type_name):
     return get_message('/'.join([parts[0], 'msg', parts[1]]) if len(parts) == 2 else type_name)
 
 
-@node('gripper', '그리퍼', desc='그리퍼를 열거나 닫습니다', fields=[
+@node('gripper', '그리퍼', desc='그리퍼를 열거나 닫습니다', resource='gripper', fields=[
     field('action', '동작', 'select', '닫기', options=['닫기', '열기']),
     field('settle', '동작 후 대기 (s)', 'number', 0.5, advanced=True),
 ])

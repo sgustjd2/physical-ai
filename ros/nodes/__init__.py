@@ -26,7 +26,7 @@
 
 실행 규칙:
   - 노드 함수가 돌려준 포트(없으면 첫 번째 포트)에 연결된 노드로 진행한다.
-  - 한 포트에 연결이 여럿이면 병렬로 실행된다. '합류' 노드는 들어오는 갈래가 모두 도착하면 한 번 진행한다.
+  - 한 포트에 연결이 여럿이면 병렬로 실행된다. 같은 장비(resource)를 쓰는 블록이 동시에 돌면 안 되므로 웹이 실행 전에 막는다. '합류' 노드는 들어오는 갈래가 모두 도착하면 한 번 진행한다.
   - 노드 함수는 실행 스레드(병렬이면 여러 스레드)에서 돌고, 예외를 던지면 워크플로가 error로 멈춘다.
   - 오래 기다릴 때는 반드시 ctx 헬퍼를 써야 정지 버튼이 먹는다.
   - ctx.sim 이 참이면 '시뮬레이션 실행'이다: 팔은 트윈(/sim)만 움직이고, 실제 장비 출력·센서 대기·녹화는 건너뛴다.
@@ -68,9 +68,10 @@ def field(key, label, kind='text', default='', options=None, advanced=False):
     return f
 
 
-def node(type_, label, fields=(), outputs=DEFAULT_OUTPUTS, advanced=False, desc=''):
+def node(type_, label, fields=(), outputs=DEFAULT_OUTPUTS, advanced=False, desc='', resource=None):
     """desc: 블록 선택 창에 보이는 한 줄 설명 (비개발자가 무엇을 하는 블록인지 알 수 있게).
-    advanced=True 면 블록 선택 창의 '고급' 영역에 접혀 들어간다 (ROS 토픽을 직접 다루는 노드 등)."""
+    advanced=True 면 블록 선택 창의 '고급' 영역에 접혀 들어간다 (ROS 토픽을 직접 다루는 노드 등).
+    resource: 이 블록이 쓰는 장비 ('arm', 'gripper' …). 웹의 실행 전 점검이 같은 장비를 동시에 쓰는 병렬 갈래를 막는다."""
     def deco(fn):
         if type_ in REGISTRY:
             raise ValueError(f'노드 타입 중복: {type_}')
@@ -78,7 +79,7 @@ def node(type_, label, fields=(), outputs=DEFAULT_OUTPUTS, advanced=False, desc=
         REGISTRY[type_] = {'run': fn, 'spec': {
             'type': type_, 'label': label, 'fields': list(fields),
             'group': getattr(mod, 'GROUP', '기타'), 'icon': getattr(mod, 'ICON', ''), 'order': getattr(mod, 'ORDER', 100),
-            'outputs': [{'id': i, 'label': lb} for i, lb in outputs], 'advanced': advanced, 'desc': desc,
+            'outputs': [{'id': i, 'label': lb} for i, lb in outputs], 'advanced': advanced, 'desc': desc, 'resource': resource,
         }}
         return fn
     return deco

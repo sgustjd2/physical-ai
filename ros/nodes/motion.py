@@ -24,7 +24,7 @@ def setup(ctx):
     ctx.sim_cmd_pub = ctx.create_publisher(JointTrajectory, '/sim/workflow/command', 10)
 
 
-@node('move_j', 'MoveJ 관절 이동', desc='티칭한 자세(관절 각도)로 팔을 움직입니다', fields=[
+@node('move_j', 'MoveJ 관절 이동', desc='티칭한 자세(관절 각도)로 팔을 움직입니다', resource='arm', fields=[
     field('joints', '관절 각도 (°)', 'joints'),
     field('duration', '이동 시간 (s)', 'number', 2),
 ])
@@ -32,7 +32,7 @@ def move_j(ctx, d):
     move(ctx, d['joints'], float(d.get('duration') or 2))
 
 
-@node('move_home', '홈 위치로 이동', desc='로봇 프로파일에 정한 홈 자세로 돌아갑니다', fields=[
+@node('move_home', '홈 위치로 이동', desc='로봇 프로파일에 정한 홈 자세로 돌아갑니다', resource='arm', fields=[
     field('duration', '이동 시간 (s)', 'number', 3),
 ])
 def move_home(ctx, d):

@@ -16,6 +16,8 @@ export const JointNames = createContext([]) // 로봇 프로파일의 관절 순
 export const NodeActions = createContext({})
 // 로봇 정보: camera = 프로파일 기본 카메라 토픽, connected = 실행기 연결 여부
 export const Robot = createContext({ camera: '', connected: false })
+// 실행 전 점검 결과: node id → [{ level, text }] (check.js)
+export const Issues = createContext(new Map())
 
 const DEFAULT_OUT = [{ id: 'out', label: '' }]
 export const START = { type: 'start', label: '시작', group: '', icon: 'play', fields: [], outputs: DEFAULT_OUT }
@@ -42,11 +44,13 @@ const summary = (f, v) => {
 export function FlowNode({ id, type, data, selected, dragging }) {
   const { specs, colorOf, loaded } = useContext(Specs)
   const act = useContext(NodeActions)
+  const issues = useContext(Issues).get(id)
+  const worst = issues?.some((i) => i.level === 'error') ? 'error' : issues ? 'warn' : ''
   const spec = type === 'start' ? START : specs[type]
   const outs = outputsOf(spec)
   const labeled = outs.length > 1 || outs[0].label
   return (
-    <div className={`node node-${type}${spec || !loaded ? '' : ' unknown'}`} style={{ '--cat': colorOf(type) }}>
+    <div className={`node node-${type}${spec || !loaded ? '' : ' unknown'}${worst ? ` issue-${worst}` : ''}`} style={{ '--cat': colorOf(type) }}>
       {type !== 'start' && (
         <NodeToolbar isVisible={selected && !dragging} position={Position.Top} align="end" className="node-toolbar">
           <button className="icon-btn" onClick={() => act.test(id)} disabled={!spec} title="이 단계만 시뮬레이션" aria-label="이 단계만 시뮬레이션"><Icon name="sim" /></button>
@@ -59,6 +63,12 @@ export function FlowNode({ id, type, data, selected, dragging }) {
       <div className="node-head">
         <span className="node-icon" aria-hidden="true">{spec?.icon ? <Icon name={spec.icon} size={14} /> : <span className="node-dot" />}</span>
         <span className="node-title">{data.title || (spec?.label ?? type)}</span>
+        {worst && (
+          <span className={`node-issue ${worst}`} role="img" aria-label={`${worst === 'error' ? '실행 전 문제' : '주의'}: ${issues.map((i) => i.text).join(', ')}`}
+            title={issues.map((i) => i.text).join('\n')}>
+            <Icon name="alert" size={14} />
+          </span>
+        )}
         {type !== 'start' && (spec || data.title) && <span className="node-type" translate="no">{data.title ? spec?.label ?? type : type}</span>}
       </div>
       {(!spec || spec.fields.length > 0) && (
@@ -201,6 +211,7 @@ function NextSteps({ node, spec, links, options, onAdd, onRemove }) {
 
 export function Inspector({ node, onClose, links, options, onAddLink, onRemoveLink }) {
   const { specs, colorOf, loaded } = useContext(Specs)
+  const issues = useContext(Issues).get(node.id)
   const act = useContext(NodeActions)
   const { updateNodeData } = useReactFlow()
   const spec = node.type === 'start' ? START : specs[node.type]
@@ -222,6 +233,11 @@ export function Inspector({ node, onClose, links, options, onAddLink, onRemoveLi
         <button className="icon-btn" onClick={onClose} aria-label="설정 닫기"><Icon name="close" /></button>
       </div>
       <div className="inspector-body">
+        {issues && (
+          <ul className="issue-list" aria-label="실행 전 점검">
+            {issues.map((i) => <li key={i.text} className={i.level}><Icon name="alert" size={14} />{i.text}</li>)}
+          </ul>
+        )}
         {spec?.desc && <p className="hint-text">{spec.desc}</p>}
         {!spec && (
           <div className="field-head">
