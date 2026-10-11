@@ -26,6 +26,9 @@ urdf: robot.urdf
 mesh_packages:
   demo_arm: .
 
+# 3D 경로 미리보기에서 '팔 끝'으로 볼 URDF 링크 (그리퍼·툴 끝). 생략하면 URDF 맨 끝 링크 (보통 플랜지)
+tcp_link: tool_tip
+
 # 작업 셀: 3D 뷰와 디지털 트윈에 로봇과 함께 그려지는 물체. 단위 m·라디안, 위치는 로봇 기준(base_link, Z 위쪽)
 #   shape: box(size: [x, y, z]) | cylinder(radius, height) | sphere(radius) | mesh(file: 이 폴더 기준 STL/GLB, scale)
 #   xyz: 물체 가운데(메시는 원점), rpy: [roll, pitch, yaw], color: '#rrggbb', opacity: 0~1

@@ -1,5 +1,6 @@
 // 시연·온보딩용 예제 워크플로. '열기' 메뉴에서 불러온다 (서버 저장소와 별개, 읽기 전용).
-// 병렬 초기화 → 합류 → 3회 반복 { 접근 → AI 비전 판단(카메라) → (예) 집기·옮기기·놓기 / (아니오) 잠시 대기 } → 홈
+// 병렬 초기화 → 합류 → 3회 반복 { 접근 → AI 비전 판단(카메라) → (예) 내려가 집기·들어올리기·옮기기·놓기 / (아니오) 잠시 대기 } → 홈
+// 관절 값은 demo_arm 작업 셀(robots/demo_arm/robot.yaml)에 맞춘 것: 툴 끝이 아래를 보며 부품(0.37, 0.27) 위 15cm → 부품 높이 → 상자(0.45, -0.32) 위
 const mj = (id, x, y, joints) => ({ id, type: 'move_j', position: { x, y }, data: { joints, duration: 1.2 } })
 const e = (source, target, sourceHandle) => ({ id: `${source}-${sourceHandle || 'out'}-${target}`, source, target, ...(sourceHandle ? { sourceHandle } : {}) })
 const home = (id, x, y) => ({ id, type: 'move_home', position: { x, y }, data: { duration: 1.5 } }) // 로봇 프로파일의 홈 자세
@@ -14,13 +15,15 @@ export const EXAMPLES = [
         home('home', 134, 80),
         { id: 'ready', type: 'join', position: { x: 50, y: 200 }, data: {} },
         { id: 'repeat', type: 'loop', position: { x: 0, y: 280 }, data: { count: 3 } },
-        mj('approach', -134, 400, [40, 35, 70, 0, 60, 0]),
+        mj('approach', -134, 400, [36.1, 22.6, 111, 0, 46.5, 0]),
         home('home_end', 134, 400),
         { id: 'check', type: 'vlm_check', position: { x: -134, y: 510 }, data: { question: '그리퍼 아래 작업대에 집을 수 있는 부품이 있나요?', camera: '', timeout: 3, on_low: '정지', sim_result: '예' } },
-        { id: 'grip_close', type: 'gripper', position: { x: -268, y: 650 }, data: { action: '닫기', settle: 0.5 } },
+        mj('pick', -268, 650, [36.1, 36.3, 111.9, 0, 31.7, 0]),
+        { id: 'grip_close', type: 'gripper', position: { x: -268, y: 770 }, data: { action: '닫기', settle: 0.5 } },
+        mj('lift', -268, 880, [36.1, 22.6, 111, 0, 46.5, 0]),
         { id: 'retry_wait', type: 'wait', position: { x: 0, y: 650 }, data: { sec: 1 } },
-        mj('place', -268, 760, [-40, 35, 70, 0, 60, 0]),
-        { id: 'release', type: 'gripper', position: { x: -268, y: 880 }, data: { action: '열기', settle: 0.5 } },
+        mj('place', -268, 1000, [-35.4, 31.4, 93.7, 0, 54.9, 0]),
+        { id: 'release', type: 'gripper', position: { x: -268, y: 1120 }, data: { action: '열기', settle: 0.5 } },
       ],
       edges: [
         e('start', 'grip_open'), e('start', 'home'),
@@ -28,8 +31,8 @@ export const EXAMPLES = [
         e('ready', 'repeat'),
         e('repeat', 'approach', 'repeat'), e('repeat', 'home_end', 'done'),
         e('approach', 'check'),
-        e('check', 'grip_close', 'yes'), e('check', 'retry_wait', 'no'),
-        e('grip_close', 'place'), e('place', 'release'), e('release', 'repeat'),
+        e('check', 'pick', 'yes'), e('check', 'retry_wait', 'no'),
+        e('pick', 'grip_close'), e('grip_close', 'lift'), e('lift', 'place'), e('place', 'release'), e('release', 'repeat'),
         e('retry_wait', 'repeat'),
       ],
     },

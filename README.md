@@ -121,6 +121,7 @@ WSL 미러 네트워킹에서는 DDS 디스커버리가 막히므로 `export FAS
 
 4. **메시가 있는 제조사 URDF**: description 패키지(예: `ur_description`)를 `robots/<이름>/` 안에 그대로 복사하면 `package://ur_description/…` 메시를 웹이 `/robots/<이름>/ur_description/…`에서 받습니다 (STL·DAE·GLB). 폴더 이름이 다르면 `robot.yaml`의 `mesh_packages`에 `패키지: 폴더`로 적습니다.
 5. **작업 셀**: `robot.yaml`의 `scene`에 작업대·지그·상자 등을 적으면 3D 뷰와 디지털 트윈에 로봇과 함께 그려집니다 (상자·원기둥·구 또는 STL/GLB 파일, 위치는 로봇 기준 m·라디안). 데모 프로파일에 예시가 있습니다.
+6. **팔 끝(TCP)**: 3D 경로 미리보기는 `robot.yaml`의 `tcp_link`(그리퍼·툴 끝 링크)가 지나는 길을 그립니다. 없으면 URDF 맨 끝 링크(보통 플랜지)를 쓰고, 이름이 틀리면 3D 화면에 경고가 뜹니다. 툴 끝 링크가 URDF에 없으면 고정 조인트로 추가합니다 (데모 `tool_tip` 참고).
 
 > 웹(nginx)은 `robots/` 폴더를 읽기 전용으로 `/robots/`에 마운트해 메시·작업 셀 파일을 줍니다 (개발 서버도 같은 경로).
 

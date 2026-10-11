@@ -68,4 +68,11 @@
     <visual><origin xyz="0 0.03 0.085"/><geometry><box size="0.015 0.012 0.05"/></geometry><material name="dark"/></visual>
     <visual><origin xyz="0 -0.03 0.085"/><geometry><box size="0.015 0.012 0.05"/></geometry><material name="dark"/></visual>
   </link>
+
+  <!-- 툴 끝 (그리퍼 손가락 끝 가운데). 프로파일 tcp_link 가 가리킴 -->
+  <joint name="tool_tip_joint" type="fixed">
+    <parent link="link6"/><child link="tool_tip"/>
+    <origin xyz="0 0 0.11"/>
+  </joint>
+  <link name="tool_tip"/>
 </robot>

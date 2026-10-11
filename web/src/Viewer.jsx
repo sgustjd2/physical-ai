@@ -32,7 +32,7 @@ export default function Viewer({ stale, ghost, followCommand, simRun, replay, la
   const remainRef = useRef(null)
   const [robotName, setRobotName] = useState('')
   const [remain, setRemain] = useState(null) // 목표까지 남은 최대 각도(°), 목표 없으면 null
-  const [meshError, setMeshError] = useState('') // 불러오지 못한 3D 파일
+  const [warn, setWarn] = useState('') // 3D 설정 문제 (불러오지 못한 파일, 없는 팔 끝 링크)
   ghostRef.current = ghost
   followRef.current = followCommand
   simRef.current = simRun
@@ -90,7 +90,7 @@ export default function Viewer({ stale, ghost, followCommand, simRun, replay, la
     const stl = new STLLoader()
     const gltf = new GLTFLoader()
     let gen = 0 // 다시 그릴 때마다 증가: 지난 빌드의 늦게 온 실패는 알리지 않음
-    const failed = (url, g = gen) => (err) => { console.warn('3D 파일을 불러오지 못함', url, err); if (g === gen) setMeshError(url.split('/').pop()) }
+    const failed = (url, g = gen) => (err) => { console.warn('3D 파일을 불러오지 못함', url, err); if (g === gen) setWarn(`3D 파일을 불러오지 못함: ${url.split('/').pop()}`) }
     const loadMesh = (url, done) => {
       if (/\.(glb|gltf)$/i.test(url)) gltf.load(url, (g) => done(g.scene), undefined, failed(url))
       else stl.load(url, (geom) => done(new THREE.Mesh(geom)), undefined, failed(url))
@@ -171,7 +171,7 @@ export default function Viewer({ stale, ghost, followCommand, simRun, replay, la
     const buildRobot = () => {
       if (!urdfText) return
       gen += 1
-      setMeshError('')
+      setWarn('')
       if (robot) scene.remove(robot, ghostBot)
       robot = urdfLoader(false, gen).parse(urdfText)
       ghostBot = urdfLoader(true, gen).parse(urdfText)
@@ -179,7 +179,8 @@ export default function Viewer({ stale, ghost, followCommand, simRun, replay, la
       fkLoader.loadMeshCb = (p, m, mat, done) => done(null) // 계산용이라 메시는 받지 않음
       fkBot = fkLoader.parse(urdfText)
       fkBot.rotation.x = -Math.PI / 2
-      tcp = tcpLink(fkBot)
+      tcp = fkBot.links[info?.tcp] || tcpLink(fkBot) // 프로파일 tcp_link, 없으면 맨 끝 링크
+      if (info?.tcp && !fkBot.links[info.tcp]) setWarn(`URDF에 팔 끝 링크 없음: ${info.tcp}`)
       ghostBot.traverse((o) => { if (o.isMesh) o.material = ghostMat })
       for (const r of [robot, ghostBot]) r.rotation.x = -Math.PI / 2 // ROS는 Z-up, three.js는 Y-up
       ghostBot.visible = false
@@ -197,10 +198,10 @@ export default function Viewer({ stale, ghost, followCommand, simRun, replay, la
     }
     robotDescription.subscribe(onUrdf)
     const onScene = (m) => {
-      const meshKey = (x) => JSON.stringify([x?.robot, x?.packages])
+      const meshKey = (x) => JSON.stringify([x?.robot, x?.packages, x?.tcp])
       const rebuild = meshKey(info) !== meshKey(JSON.parse(m.data))
       info = JSON.parse(m.data)
-      setMeshError('')
+      setWarn('')
       for (const c of [...cell.children]) { cell.remove(c); c.traverse((o) => { o.geometry?.dispose(); o.material?.dispose?.() }) }
       for (const o of info.objects || []) {
         const obj = sceneObject(o, info.robot, loadMesh)
@@ -283,7 +284,7 @@ export default function Viewer({ stale, ghost, followCommand, simRun, replay, la
           <b className={remain <= REACHED_DEG ? 'reached' : ''}>{remain <= REACHED_DEG ? '도달' : `남은 각도 ${remain.toFixed(1)}°`}</b>
         </span>
       )}
-      {meshError && !stale && <span className="viewer-chip viewer-warn" role="status">3D 파일을 불러오지 못함: {meshError}</span>}
+      {warn && !stale && <span className="viewer-chip viewer-warn" role="status">{warn}</span>}
       <button className="icon-btn viewer-path" aria-pressed={showPath} aria-label="경로 보기"
         title="경로 보기: 동작 블록 사이로 팔 끝이 지나는 길 (점 = 각 동작의 목표, 큰 점 = 선택한 단계)"
         onClick={() => setShowPath((v) => { try { localStorage.setItem('viewer.path', v ? '0' : '1') } catch { /* 저장 불가 */ } return !v })}>

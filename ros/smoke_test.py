@@ -77,7 +77,7 @@ assert next(t for t in types if t['type'] == 'if')['outputs'] == [{'id': 'yes', 
 scene = []
 node.create_subscription(String, '/robot_scene', lambda m: scene.append(json.loads(m.data)), LATCHED)
 spin_until(lambda: scene, 5)
-assert scene[-1]['robot'] == 'demo_arm' and scene[-1]['packages'] == {'demo_arm': '.'}, scene[-1]
+assert scene[-1]['robot'] == 'demo_arm' and scene[-1]['packages'] == {'demo_arm': '.'} and scene[-1]['tcp'] == 'tool_tip', scene[-1]
 assert [o['shape'] for o in scene[-1]['objects']] == ['box', 'mesh', 'cylinder', 'box'], scene[-1]['objects']
 # 장비 선언: 웹의 실행 전 점검이 같은 장비를 동시에 쓰는 병렬 갈래를 막는 데 씀
 assert {t['type']: t.get('resource') for t in types if t.get('resource')} == {'move_j': 'arm', 'move_home': 'arm', 'play_episode': 'arm', 'gripper': 'gripper'}

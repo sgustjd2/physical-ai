@@ -8,7 +8,7 @@
                           "joints", "home"(°), "estop", "camera"(프로파일 기본 카메라 토픽)}
   /workflow/node_types → [{type, label, group, icon, fields, outputs}]  (웹이 팔레트·입력 폼·출력 포트를 만드는 데 씀)
   /workflow/log        → {"entries": [{time, node, text}]}  최근 실행 기록 (시작·종료·AI 판단 근거 등, latched)
-  /robot_scene         → {"robot", "packages", "objects"}  3D 작업 셀과 URDF 메시 위치 (로봇 프로파일의 scene·mesh_packages, latched)
+  /robot_scene         → {"robot", "packages", "objects", "tcp"}  3D 작업 셀, URDF 메시 위치, 경로 미리보기의 팔 끝 링크 (로봇 프로파일의 scene·mesh_packages·tcp_link, latched)
 
 이 파일은 그래프를 걷는 일만 한다. 노드 타입별 동작은 nodes/ 플러그인에 있다.
   - start에서 출발해, 노드가 돌려준 출력 포트(sourceHandle)에 연결된 노드로 진행한다.
@@ -110,7 +110,7 @@ class WorkflowExecutor(Node):
         self.get_logger().info(f'노드 타입: {", ".join(nodes.REGISTRY)}')
         scene = json.loads(self.param('scene', '{}') or '{}')
         self.create_publisher(String, '/robot_scene', LATCHED).publish(String(data=json.dumps(
-            {'robot': self.param('robot', ''), 'packages': scene.get('packages', {}), 'objects': scene.get('objects', [])},
+            {'robot': self.param('robot', ''), 'packages': scene.get('packages', {}), 'objects': scene.get('objects', []), 'tcp': scene.get('tcp', '')},
             ensure_ascii=False)))
         self.status('idle')
 
