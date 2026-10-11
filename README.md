@@ -182,7 +182,7 @@ docker compose run --rm ai python convert_lerobot.py /data/episodes --out /data/
   - `action: /leader/joint_states`: 리더-팔로워 텔레옵이면 리더 팔 토픽
 - 프레임은 `fps` 간격으로 리샘플링합니다 (각 시각 직전의 최신 메시지). 카메라는 `sensor_msgs/Image`(rgb8·bgr8·mono8 등)와 `CompressedImage`를 지원합니다.
 - ROS 설치 없이 동작합니다 (mcap 파일에 메시지 정의가 들어 있음). 결과 폴더의 `conversion.json`에 어떤 녹화에서 어떤 설정으로 만들었는지 남습니다.
-- 점검: `docker compose run --rm ai python check_dataset.py /data/lerobot/pick_v1` — 학습이 읽는 그대로 열어서 프레임 간격(1/fps)·frame_index, action=다음 프레임 상태(next_state), 관절 값이 URDF 한계·속도 한계 안인지, 카메라 프레임 디코딩·크기, 지시문을 확인합니다. 문제가 있으면 종료 코드 1 (화면이 거의 단색이거나 내내 멈춰 있으면 '주의'로만 표시). CI도 변환 직후 이 점검을 돌립니다.
+- 점검: `docker compose run --rm ai python check_dataset.py /data/lerobot/pick_v1` — 학습이 읽는 그대로 열어서 프레임 간격(1/fps)·frame_index, action=다음 프레임 상태(next_state), 관절 값이 URDF 한계·속도 한계 안인지, 카메라 프레임 디코딩·크기, 지시문을 확인합니다. 문제가 있으면 종료 코드 1 (화면이 거의 단색이거나 내내 멈춰 있으면 '주의'로만 표시). CI도 변환 직후 이 점검을 돌립니다. 통과하면 에피소드마다 재생용 궤적(`replay/episode_NNN.json`, 학습 데이터의 action 그대로)을 남기고, 워크플로의 **녹화 동작 재생** 블록이 이것을 시뮬레이션(트윈)으로 재생해 눈으로 확인하거나 실제 팔로 시연을 반복할 수 있습니다.
 - 확인: `LeRobotDataset('local/pick_v1', root='data/lerobot/pick_v1')`
 
 ## 워크플로 노드 (기본 제공)
@@ -192,6 +192,7 @@ docker compose run --rm ai python convert_lerobot.py /data/episodes --out /data/
 | | 시작 | 실행 시작점 | |
 | 동작 | MoveJ 관절 이동 | 관절 각도(°)로 이동. "현재 자세 저장"으로 조그한 자세를 티칭 | 트윈 팔만 움직임 |
 | 동작 | 홈 위치로 이동 | 로봇 프로파일의 `home` 자세로 (티칭 없이) | 트윈 팔만 움직임 |
+| 동작 | 녹화 동작 재생 | 학습 데이터셋으로 변환한 시연(`data/lerobot/<이름>`의 에피소드)을 그대로 다시 움직임. 첫 자세까지는 0.5 rad/s 이하로 천천히 | 트윈에서 재생 (데이터 눈으로 확인) |
 | 흐름 | 대기 | N초 대기 | 그대로 |
 | 흐름 | 조건 분기 | 신호(토픽) 값을 보고 **예/아니오**로 갈라짐 | 지정한 방향(고급 설정)으로 |
 | 흐름 | 반복 | **반복** 쪽으로 N번 보낸 뒤 **완료** 쪽으로 | 그대로 |

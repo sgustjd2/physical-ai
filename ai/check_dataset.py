@@ -11,6 +11,9 @@
 주의(통과, 확인 권장): 카메라 화면이 거의 단색(렌즈 덮개·검은 화면), 에피소드 내내 화면이 그대로(카메라 멈춤)
 
 로봇·프로파일은 변환기가 남긴 conversion.json에서, 관절 한계는 robots/<robot>/robot.yaml 의 urdf에서 읽는다.
+
+점검을 통과하면 에피소드마다 재생용 궤적을 <데이터셋>/replay/episode_NNN.json 으로 남긴다 (--no-export 로 끔).
+ROS 쪽 '녹화 동작 재생' 블록이 이것으로 트윈(시뮬레이션) 또는 실제 팔에서 시연 동작을 다시 움직인다 — 학습이 보는 데이터 그대로.
 """
 import argparse
 import json
@@ -96,7 +99,7 @@ def check_dataset(root, robots_dir=ROOT / 'robots'):
     ds = LeRobotDataset(f'local/{root.name}', root=root)
     cams = [k for k, v in ds.meta.features.items() if v['dtype'] == 'video']
     tab = ds.hf_dataset.with_format('numpy')[:]
-    problems, warnings, lines = [], [], []
+    problems, warnings, lines, replays = [], [], [], []
     for ep in range(ds.num_episodes):
         idx = np.where(tab['episode_index'] == ep)[0]
         p = [f'에피소드 {ep}: {m}' for m in check_motion(
@@ -126,23 +129,37 @@ def check_dataset(root, robots_dir=ROOT / 'robots'):
             w += [f'에피소드 {ep} {c}: {m}' for m in check_frames(frames[c])]
         problems += p
         warnings += w
+        replays.append({'episode': ep, 'task': sorted(tasks)[0] if tasks else '', 'fps': fps, 'joints': joints,
+                        'actions': np.stack(tab['action'][idx]).round(6).tolist(), 'source': root.name})
         lines.append(f'에피소드 {ep}: {len(idx)} 프레임 · {len(idx) / fps:.1f}s · {", ".join(sorted(tasks)) or "-"}'
                      f' · {"문제 " + str(len(p)) + "건" if p else "문제 없음"}{" · 주의 " + str(len(w)) + "건" if w else ""}')
-    return problems, warnings, lines
+    return problems, warnings, lines, replays
+
+
+def export_replays(root, replays):
+    """재생용 궤적 (관절 이름·fps·action[rad]) → <root>/replay/episode_NNN.json"""
+    out = Path(root) / 'replay'
+    out.mkdir(exist_ok=True)
+    for r in replays:
+        (out / f'episode_{r["episode"]:03d}.json').write_text(json.dumps(r, ensure_ascii=False), encoding='utf-8')
+    return out
 
 
 def main():
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument('dataset', help='변환 결과 폴더 (conversion.json 이 있는 곳)')
     ap.add_argument('--robots', default=str(ROOT / 'robots'), help='로봇 프로파일 폴더 (관절 한계용 URDF)')
+    ap.add_argument('--no-export', action='store_true', help='재생용 궤적(replay/)을 남기지 않음')
     a = ap.parse_args()
-    problems, warnings, lines = check_dataset(a.dataset, a.robots)
+    problems, warnings, lines, replays = check_dataset(a.dataset, a.robots)
     print('\n'.join(lines))
     for w in warnings:
         print(f'주의 {w}')
     for p in problems:
         print(f'문제 {p}')
     print(f'점검 {"실패" if problems else "통과"}: 문제 {len(problems)}건, 주의 {len(warnings)}건')
+    if not problems and not a.no_export:  # 문제 있는 데이터는 재생용으로 내보내지 않음
+        print(f'재생용 궤적: {export_replays(a.dataset, replays)} ({len(replays)}개)')
     sys.exit(1 if problems else 0)
 
 

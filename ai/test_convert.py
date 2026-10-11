@@ -83,8 +83,13 @@ with tempfile.TemporaryDirectory() as tmp:
 
     # 변환 결과 점검기: 학습이 읽는 그대로 열어 시간·action·카메라·지시문 확인 (단색 합성 영상이라 주의는 나올 수 있음)
     from check_dataset import check_dataset
-    problems, _, lines = check_dataset(root / 'out', root / 'robots')
+    from check_dataset import export_replays
+    problems, _, lines, replays = check_dataset(root / 'out', root / 'robots')
     assert problems == [], problems
     assert len(lines) == 1, lines
+    # 재생용 궤적: 학습 데이터의 action 그대로 (ROS '녹화 동작 재생' 블록이 읽음)
+    rp = json.loads((export_replays(root / 'out', replays) / 'episode_000.json').read_text(encoding='utf-8'))
+    assert rp['joints'] == ['a', 'b'] and rp['fps'] == 10 and len(rp['actions']) == ds.num_frames, rp.keys()
+    assert np.allclose(rp['actions'][0], f0['action'].numpy(), atol=1e-5) and rp['task'] == '빨간 블록 집기'
 
 print('test_convert OK')

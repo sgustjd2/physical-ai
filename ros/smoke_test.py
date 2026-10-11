@@ -74,7 +74,7 @@ spin_until(lambda: run.get_subscription_count() and estop.get_subscription_count
 assert {'move_j', 'move_home', 'wait', 'wait_topic', 'publish', 'episode_start', 'episode_end', 'if', 'loop', 'join', 'gripper', 'vlm_check'} <= {t['type'] for t in types}
 assert next(t for t in types if t['type'] == 'if')['outputs'] == [{'id': 'yes', 'label': '예'}, {'id': 'no', 'label': '아니오'}]
 # 장비 선언: 웹의 실행 전 점검이 같은 장비를 동시에 쓰는 병렬 갈래를 막는 데 씀
-assert {t['type']: t.get('resource') for t in types if t.get('resource')} == {'move_j': 'arm', 'move_home': 'arm', 'gripper': 'gripper'}
+assert {t['type']: t.get('resource') for t in types if t.get('resource')} == {'move_j': 'arm', 'move_home': 'arm', 'play_episode': 'arm', 'gripper': 'gripper'}
 
 # 1) start → move_j → wait_topic(외부 신호) → publish → 끝
 target = [10, 20, 30, 0, 45, 0]
@@ -254,5 +254,24 @@ assert all(e['name'] != name for e in episode['episodes']) and (DATA / '.trash' 
 ep('restore')
 assert episode['episodes'][0]['name'] == name and not (DATA / '.trash' / name).exists()
 ep('label', result='success')  # CI의 LeRobot 변환이 이 에피소드(카메라·비전 라벨 포함)를 쓰도록 되돌림
+
+# 18) 녹화 동작 재생: 데이터셋 궤적(check_dataset.py가 남기는 replay/episode_NNN.json)을 트윈에서 재생.
+#     관절은 이름으로 맞추고(추가 관절 gripper는 무시), 실제 팔은 그대로. 없는 데이터셋은 이유와 함께 오류
+names6 = states[-1]['joints']
+replay_dir = DATA.parent / 'lerobot' / 'smoke' / 'replay'
+replay_dir.mkdir(parents=True, exist_ok=True)
+(replay_dir / 'episode_000.json').write_text(json.dumps({
+    'episode': 0, 'task': '스모크 재생', 'fps': 10, 'joints': ['gripper', *reversed(names6)],
+    'actions': [[0.02, *reversed([0.05 * i] + [0.0] * 5)] for i in range(11)]}), encoding='utf-8')  # joint1: 0 → 0.5 rad
+before = dict(joints)
+sim_j1.clear()
+end = run_until_end([{'id': 'p', 'type': 'play_episode', 'data': {'dataset': 'smoke', 'episode': 0, 'speed': 2}}],
+                    [{'source': 's', 'target': 'p'}], timeout=20, mode='sim')
+assert end['state'] == 'done', end
+assert abs(max(sim_j1) - math.degrees(0.5)) < 1, max(sim_j1)  # 마지막 프레임 자세 28.6°까지 (끝나면 트윈은 다시 실제 팔을 따라감)
+assert all(abs(joints[n] - before[n]) < 0.01 for n in before), '시뮬레이션인데 실제 팔이 움직임'
+end = run_until_end([{'id': 'p', 'type': 'play_episode', 'data': {'dataset': 'nope', 'episode': 0}}],
+                    [{'source': 's', 'target': 'p'}], mode='sim')
+assert end['state'] == 'error' and 'smoke' in end['msg'], end['msg']  # '있는 것: smoke' 를 알려 줌
 
 print('smoke test OK')
