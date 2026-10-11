@@ -32,7 +32,7 @@ node.create_subscription(String, '/episode/status', lambda m: episode.update(jso
 node.create_subscription(String, '/workflow/node_types', lambda m: types.extend(json.loads(m.data)), LATCHED)
 node.create_subscription(JointState, '/joint_states', lambda m: joints.update(zip(m.name, m.position)), 10)
 node.create_subscription(String, '/workflow/library', lambda m: library.update(json.loads(m.data)), LATCHED)
-node.create_subscription(JointState, '/sim/joint_states', lambda m: sim_j1.append(math.degrees(m.position[0])), 10)
+node.create_subscription(JointState, '/sim/joint_states', lambda m: sim_j1.append(math.degrees(m.position[0])), 1000)  # 100Hz 전부 필요(최대 각도) → 루프가 밀려도 안 버리게
 lib_cmd = node.create_publisher(String, '/workflow/library/cmd', 10)
 node.create_subscription(String, '/workflow/log', lambda m: logs.update(json.loads(m.data)), LATCHED)
 node.create_subscription(String, '/workflow/generate', lambda m: gen.update(json.loads(m.data)), LATCHED)
