@@ -7,8 +7,8 @@ export const ros = new Ros()
 
 // 30Hz로 오는 값은 React state로 두지 않고 여기 두고, 필요한 쪽(3D 렌더 루프 등)이 읽어간다
 // joints: { 조인트이름: rad }, count/stamp: 수신 상태 표시용, command: 마지막 이동 명령의 목표 { 조인트이름: rad }
-// simJoints: 디지털 트윈 팔(/sim) 자세 (시뮬레이션 실행 때 3D에 그림)
-export const latest = { joints: {}, simJoints: {}, count: 0, stamp: 0, command: null }
+// simJoints: 디지털 트윈 팔(/sim) 자세 (시뮬레이션 실행 때 3D에 그림), replayJoints: 녹화 재생(/replay) 자세
+export const latest = { joints: {}, simJoints: {}, replayJoints: {}, count: 0, stamp: 0, command: null }
 
 const connect = () => ros.connect(url).catch(() => {})
 ros.on('close', () => setTimeout(connect, 2000))
@@ -25,6 +25,11 @@ topic('/joint_states', 'sensor_msgs/msg/JointState', { throttle_rate: 33 }).subs
 
 topic('/sim/joint_states', 'sensor_msgs/msg/JointState', { throttle_rate: 33 }).subscribe((m) => {
   m.name.forEach((n, i) => { latest.simJoints[n] = m.position[i] })
+})
+
+// 녹화한 에피소드를 재생하면 녹화기가 /replay/<토픽> 으로 보낸다 (실제 로봇·트윈과 섞이지 않게)
+topic('/replay/joint_states', 'sensor_msgs/msg/JointState', { throttle_rate: 33 }).subscribe((m) => {
+  m.name.forEach((n, i) => { latest.replayJoints[n] = m.position[i] })
 })
 
 // 실행기가 팔에 보낸 이동 명령 (디지털 트윈에서 '명령 목표 vs 실제 자세' 표시용)

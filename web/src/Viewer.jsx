@@ -12,18 +12,21 @@ const HOME = { pos: [1.4, 1.0, 1.6], target: [0, 0.45, 0] }
 const REACHED_DEG = 0.5
 
 // ghost: { 관절이름: rad } | null  (명시 목표). followCommand: 명시 목표가 없을 때 실행 중 이동 명령을 고스트로
-export default function Viewer({ stale, ghost, followCommand, simRun, large }) {
+// replay: 녹화 재생 중 → 녹화한 자세를 그리고 실제 로봇은 반투명으로 (시뮬레이션과 같은 방식)
+export default function Viewer({ stale, ghost, followCommand, simRun, replay, large }) {
   const ref = useRef()
   const resetRef = useRef(() => {})
   const ghostRef = useRef(ghost)
   const followRef = useRef(followCommand)
   const simRef = useRef(simRun)
+  const replayRef = useRef(replay)
   const remainRef = useRef(null)
   const [robotName, setRobotName] = useState('')
   const [remain, setRemain] = useState(null) // 목표까지 남은 최대 각도(°), 목표 없으면 null
   ghostRef.current = ghost
   followRef.current = followCommand
   simRef.current = simRun
+  replayRef.current = replay
 
   useEffect(() => {
     const el = ref.current
@@ -90,8 +93,9 @@ export default function Viewer({ stale, ghost, followCommand, simRun, large }) {
     const loop = () => {
       raf = requestAnimationFrame(loop)
       if (robot) {
-        const sim = simRef.current
-        for (const [n, v] of Object.entries(sim ? latest.simJoints : latest.joints)) robot.joints[n]?.setJointValue(v)
+        const rep = replayRef.current
+        const sim = simRef.current || rep // 다른 자세를 그리고 실제 로봇은 고스트로
+        for (const [n, v] of Object.entries(rep ? latest.replayJoints : sim ? latest.simJoints : latest.joints)) robot.joints[n]?.setJointValue(v)
         const target = sim ? latest.joints : ghostRef.current || (followRef.current ? latest.command : null)
         ghostBot.visible = !!target
         let worst = null
@@ -127,14 +131,14 @@ export default function Viewer({ stale, ghost, followCommand, simRun, large }) {
       <span className="viewer-chip">
         {stale ? (robotName ? '연결 끊김: 마지막으로 받은 자세' : '연결 대기 중') : robotName || '로봇 모델 수신 대기 중…'}
       </span>
-      {simRun && !stale && (
+      {(simRun || replay) && !stale && (
         <span className="viewer-legend sim">
           <span className="ghost-swatch" aria-hidden="true" />
           반투명: 실제 로봇 위치 (움직이지 않음)
-          <b>시뮬레이션 중</b>
+          <b>{replay ? '녹화 재생 중' : '시뮬레이션 중'}</b>
         </span>
       )}
-      {!simRun && remain != null && remain >= 0 && !stale && (
+      {!simRun && !replay && remain != null && remain >= 0 && !stale && (
         <span className="viewer-legend">
           <span className="ghost-swatch" aria-hidden="true" />
           {ghost ? '선택한 단계의 목표 자세' : '명령 목표 자세'}

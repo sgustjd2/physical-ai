@@ -562,7 +562,7 @@ export default function App() {
     return Object.fromEntries(names.map((n, i) => [n, (Number(editing.data.joints?.[i]) || 0) * Math.PI / 180]))
   }, [editing, names])
   const simRun = running && status.mode === 'sim'
-  const viewer = <Viewer large={view === 'twin'} stale={!connected} ghost={ghost} followCommand={running && !simRun} simRun={simRun} />
+  const viewer = <Viewer large={view === 'twin'} stale={!connected} ghost={ghost} followCommand={running && !simRun} simRun={simRun} replay={!!episode.playing} />
 
   return (
     <Specs.Provider value={specCtx}>
@@ -711,7 +711,7 @@ export default function App() {
               )}
               <Jog names={names} home={status.home} disabled={!connected || estop || (running && status.node !== 'jog')} />
               <Tabs tabs={[
-                { id: 'rec', label: <>녹화{episode.recording && <span className="tab-dot" aria-label="녹화 중" />}</>, content: <Episodes episode={episode} connected={connected} /> },
+                { id: 'rec', label: <>녹화{episode.recording && <span className="tab-dot" aria-label="녹화 중" />}</>, content: <Episodes episode={episode} connected={connected} notify={setNotice} /> },
                 { id: 'camera', label: '카메라', lazy: true, content: <CameraPanel connected={connected} defaultTopic={status.camera || ''} value={camView} onChange={setCamView} /> },
                 { id: 'log', label: '기록', content: <Logs entries={log.entries} labelOf={labelOf} /> },
                 { id: 'topics', label: '토픽', content: <Topics connected={connected} /> },

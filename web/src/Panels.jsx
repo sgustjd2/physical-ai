@@ -1,5 +1,6 @@
 // 오른쪽 패널: 조그(관절 단위 수동 이동), 에피소드 녹화, 토픽 모니터(아무 ROS 토픽이나 실시간 보기)
 import { useEffect, useRef, useState } from 'react'
+import { CameraView } from './Camera'
 import { Hint } from './Hint'
 import { Icon } from './icons'
 import { currentDeg, moveHome, moveTo, ros, sendEpisode, topic } from './ros'
@@ -91,9 +92,80 @@ export function Tabs({ tabs }) {
   )
 }
 
+const REPLAY = '/replay'
+const ANSWER = { yes: '예', no: '아니오' }
+const CONF = { high: '확신 높음', medium: '확신 보통', low: '확신 낮음' }
+const timeOf = (iso) => (iso ? new Date(iso).toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit', hour12: false }) : '')
+
+// 녹화한 에피소드 보기: 재생(3D + 카메라), 녹화 중 AI 판단, 결과 고치기, 지우기(휴지통, 되돌리기 가능)
+function EpisodeDetail({ e, episode, connected, notify, onClose }) {
+  const playing = episode.playing?.name === e.name
+  const [since, setSince] = useState(0)
+  useEffect(() => { if (playing) setSince(Date.now()) }, [playing])
+  useTick(250, playing)
+  const cam = (e.topics || []).find((t) => /image|camera/.test(t) && !/camera_info/.test(t))
+  const camType = cam?.endsWith('compressed') ? 'sensor_msgs/msg/CompressedImage' : 'sensor_msgs/msg/Image'
+  const done = e.result && e.result !== 'interrupted'
+  const remove = () => {
+    sendEpisode('delete', { name: e.name })
+    notify({ tone: 'info', text: `'${e.task || e.name}' 에피소드를 휴지통으로 옮겼습니다.`, undo: () => sendEpisode('restore', { name: e.name }) })
+    onClose()
+  }
+  return (
+    <section className="ep-detail" aria-label="에피소드 보기">
+      <div className="ep-detail-head">
+        <b className="ep-detail-title">{e.task || '작업 설명 없음'}</b>
+        <span className={`result ${e.result}`}>{RESULT[e.result] ?? e.result ?? '진행 중'}</span>
+        <button className="icon-btn" onClick={onClose} aria-label="에피소드 보기 닫기"><Icon name="close" /></button>
+      </div>
+      <p className="ep-meta muted">
+        {timeOf(e.started)}{e.duration != null ? ` · ${e.duration.toFixed(1)}s` : ''} · 카메라 {cam ? <span translate="no">{cam}</span> : '녹화 안 함'}
+      </p>
+      {playing ? (
+        <div className="ep-play">
+          <progress max={e.duration || 1} value={Math.min((Date.now() - since) / 1000, e.duration || 1)} aria-label="재생 위치" />
+          <button onClick={() => sendEpisode('stop_play', {})}><Icon name="stop" />정지</button>
+        </div>
+      ) : (
+        <button className="ep-play-btn" onClick={() => sendEpisode('play', { name: e.name })} disabled={!connected || episode.recording || !done}
+          title={episode.recording ? '녹화 중에는 재생할 수 없습니다' : '3D와 카메라로 녹화를 다시 봅니다 (실제 로봇은 움직이지 않음)'}>
+          <Icon name="play" />다시 보기
+        </button>
+      )}
+      {playing && cam && <CameraView topic={REPLAY + cam} list={[{ name: REPLAY + cam, type: camType }]} compact />}
+      {!!e.vision?.length && (
+        <div className="ep-vision">
+          <span className="field-label">녹화 중 AI 판단 {e.vision.length}건</span>
+          <ul>
+            {e.vision.map((v, i) => (
+              <li key={i}>
+                <span className="num">{v.t != null ? `${v.t.toFixed(1)}s` : ''}</span>
+                <span>{v.question} → <b>{ANSWER[v.answer] ?? v.answer}</b> ({CONF[v.confidence] ?? v.confidence}){v.reason ? ` — ${v.reason}` : ''}</span>
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+      <div className="ep-actions">
+        <span className="field-label">학습 데이터</span>
+        <div className="segmented" role="radiogroup" aria-label="결과 고치기">
+          {['success', 'fail'].map((r) => (
+            <button key={r} role="radio" aria-checked={e.result === r} disabled={!connected || !done}
+              onClick={() => e.result !== r && sendEpisode('label', { name: e.name, result: r })}>{RESULT[r]}</button>
+          ))}
+        </div>
+        <span className="spacer" />
+        <button className="ghost danger-text" onClick={remove} disabled={!connected || !done}><Icon name="trash" />지우기</button>
+      </div>
+    </section>
+  )
+}
+
 // 수동 녹화(조그·텔레옵 시연)용. 워크플로 안에서는 '에피소드 시작/종료' 노드를 쓴다
-export function Episodes({ episode, connected }) {
+export function Episodes({ episode, connected, notify }) {
   const [task, setTask] = useState('')
+  const [sel, setSel] = useState(null)
+  const selected = episode.episodes?.find((e) => e.name === sel)
   const rec = episode.recording
   useTick(500, rec)
   const start = (e) => {
@@ -130,6 +202,7 @@ export function Episodes({ episode, connected }) {
         </form>
       )}
       {episode.error && <p className="error-text" role="alert">{episode.error}</p>}
+      {selected && <EpisodeDetail key={selected.name} e={selected} episode={episode} connected={connected} notify={notify} onClose={() => setSel(null)} />}
       <h3 className="list-title">
         최근 에피소드 <span className="muted">{episode.episodes?.length || 0}개</span>
         {/* 학습 데이터 준비 현황 (변환 기본값은 성공 에피소드만 사용) */}
@@ -146,8 +219,14 @@ export function Episodes({ episode, connected }) {
             </thead>
             <tbody>
               {episode.episodes.map((e) => (
-                <tr key={e.name} title={e.name}>
-                  <td className="ep-task">{e.task || <span className="muted">작업 설명 없음</span>}</td>
+                <tr key={e.name} title={e.name} className={e.name === sel ? 'selected' : undefined}>
+                  <td className="ep-task">
+                    <button className="ep-open" onClick={() => setSel(e.name === sel ? null : e.name)} aria-expanded={e.name === sel}
+                      aria-label={`${e.task || '작업 설명 없음'} 에피소드 보기`}>
+                      {e.task || <span className="muted">작업 설명 없음</span>}
+                      {!!e.vision?.length && <span className="ep-ai" title={`AI 판단 ${e.vision.length}건`}>AI</span>}
+                    </button>
+                  </td>
                   <td><span className={`result ${e.result}`}>{RESULT[e.result] ?? e.result ?? '진행 중'}</span></td>
                   <td className="num">{e.duration != null ? `${e.duration.toFixed(1)}s` : ''}</td>
                   <td className="num">{e.started ? new Date(e.started).toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit', hour12: false }) : ''}</td>

@@ -226,4 +226,33 @@ spin_until(lambda: not episode['recording'] and episode['episodes'][0]['task'] =
 info = json.loads((DATA / episode['episodes'][0]['name'] / 'episode.json').read_text(encoding='utf-8'))
 assert len(info.get('vision', [])) == 1 and info['vision'][0]['answer'] == 'yes' and info['vision'][0]['t'] >= 0, info.get('vision')
 
+# 17) 에피소드 다시 보기·정리: 재생하면 녹화가 /replay/<토픽> 으로 나오고(실제 로봇과 섞이지 않음) 끝나면 재생 상태가 풀린다.
+#     결과 고치기, 지우기(휴지통) → 되돌리기
+ep_cmd = node.create_publisher(String, '/episode/cmd', 10)
+replayed = []
+node.create_subscription(JointState, '/replay/joint_states', replayed.append, 10)
+spin_until(lambda: ep_cmd.get_subscription_count() > 0, 5)
+name = episode['episodes'][0]['name']
+
+
+def ep(op, **kw):
+    ep_cmd.publish(String(data=json.dumps({'op': op, 'id': f'{op}-{name}', 'name': name, **kw}, ensure_ascii=False)))
+    spin_until(lambda: episode.get('ack') == f'{op}-{name}', 10)
+    assert not episode.get('error'), episode['error']
+
+
+before = dict(joints)
+ep('play')
+assert episode['playing']['name'] == name, episode['playing']
+spin_until(lambda: replayed, 10)
+spin_until(lambda: episode.get('playing') is None, 20)  # 녹화 길이(약 2초)만큼 재생하고 끝남
+assert all(abs(joints[n] - before[n]) < 0.01 for n in before), '재생인데 실제 팔이 움직임'
+ep('label', result='fail')
+assert episode['episodes'][0]['result'] == 'fail', episode['episodes'][0]
+ep('delete')
+assert all(e['name'] != name for e in episode['episodes']) and (DATA / '.trash' / name).is_dir()
+ep('restore')
+assert episode['episodes'][0]['name'] == name and not (DATA / '.trash' / name).exists()
+ep('label', result='success')  # CI의 LeRobot 변환이 이 에피소드(카메라·비전 라벨 포함)를 쓰도록 되돌림
+
 print('smoke test OK')

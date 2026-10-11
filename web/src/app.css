@@ -357,7 +357,25 @@ aside > .tabs { display: flex; flex: 1 0 240px; flex-direction: column; min-heig
 aside > .twin-camera { flex: 1 1 340px; min-height: 200px; padding: 10px 12px; border-bottom: 1px solid var(--border); }
 aside:has(> .twin-camera) > .tabs { flex-basis: 180px; } /* 트윈 보기는 지켜보는 화면이라 카메라에 높이를 더 준다 (탭 내용은 안에서 스크롤) */
 aside > .tabs > [role='tabpanel'] { flex: 1; min-height: 0; overflow-x: hidden; overflow-y: auto; overscroll-behavior: contain; }
-aside .table-wrap, aside /* 카메라 실시간 화면 */
+aside .table-wrap, aside /* 에피소드 보기 (재생·AI 판단·결과 고치기·지우기) */
+.ep-open { width: 100%; min-height: 0; justify-content: flex-start; gap: 6px; padding: 0; background: transparent; border: 0; color: inherit; font: inherit; text-align: left; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ep-open:hover:not(:disabled) { background: transparent; text-decoration: underline; }
+.episode-table tr.selected td { background: var(--accent-soft); }
+.ep-ai { flex: none; padding: 0 4px; border: 1px solid var(--cat-3); border-radius: var(--radius); color: var(--cat-3); font-size: var(--text-xs); font-weight: 600; }
+.ep-detail { display: grid; gap: 10px; margin: 4px 0 12px; padding: 10px 12px; background: var(--surface-2); border: 1px solid var(--border); border-radius: var(--radius-lg); }
+.ep-detail-head { display: flex; align-items: center; gap: 8px; min-width: 0; }
+.ep-detail-title { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ep-detail-head .icon-btn { background: transparent; border-color: transparent; }
+.ep-meta { margin: -4px 0 0; font-size: var(--text-xs); overflow-wrap: anywhere; }
+.ep-play { display: flex; align-items: center; gap: 8px; }
+.ep-play progress { flex: 1; height: 8px; accent-color: var(--accent); }
+.ep-play-btn { justify-self: start; gap: 6px; }
+.ep-vision ul { display: grid; gap: 4px; margin: 4px 0 0; padding: 0; list-style: none; font-size: var(--text-sm); }
+.ep-vision li { display: grid; grid-template-columns: 44px minmax(0, 1fr); gap: 6px; }
+.ep-vision li .num { color: var(--muted); font-variant-numeric: tabular-nums; }
+.ep-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+
+/* 카메라 실시간 화면 */
 .camera-panel { display: grid; gap: 10px; }
 /* 넓은 화면: 탭에 남은 높이만큼 화면을 키운다 (탭 안에서 스크롤하지 않게). 좁은 화면은 세로로 쌓이므로 4:3 그대로 */
 @media (min-width: 901px) {

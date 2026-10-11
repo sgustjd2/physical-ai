@@ -23,7 +23,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - run: docker compose up -d --build ros
-      - name: smoke test (실행·정지·오류·녹화·분기·병렬·반복·시뮬레이션·저장소·AI·홈·비상정지·카메라)
+      - name: smoke test (실행·정지·오류·녹화·분기·병렬·반복·시뮬레이션·저장소·AI·홈·비상정지·카메라·다시 보기)
         run: docker compose exec -T ros bash -c "source /opt/ros/jazzy/setup.bash && cd /ros && python3 test_ai.py && python3 smoke_test.py"
       - name: LeRobot 변환 (합성 녹화 테스트 + 방금 녹화된 실제 에피소드)
         run: |
