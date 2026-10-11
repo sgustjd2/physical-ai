@@ -6,9 +6,11 @@
 - 로봇별 매핑(관절, 카메라, action 정의)은 robots/<robot>/robot.yaml 의 `dataset` 섹션에서 읽는다. 코드 수정 없음.
 - ROS 설치 없이 동작한다 (mcap 파일 안에 메시지 스키마가 들어 있음).
 - 프레임은 fps 간격으로 리샘플링: 각 프레임 시각 직전의 최신 메시지를 쓴다 (zero-order hold).
+  관절 상태는 측정 시각(header.stamp) 기준 — 녹화기가 바빠 메시지가 몰려 들어와도 자세가 멈췄다 튀지 않게.
 - 기본으로 result == success 인 에피소드만, 작업 설명(task)이 없는 에피소드는 건너뛴다 (VLA 지시문이 필요하므로).
 """
 import argparse
+import bisect
 import io
 import json
 import sys
@@ -62,21 +64,40 @@ def to_rgb(msg):
 
 def snapshots(bag, fps, cameras, action_topic):
     """bag을 시간순으로 훑으며 1/fps 간격마다 {토픽: 그 시각 직전 최신 메시지} 를 낸다.
-    상태와 모든 카메라가 한 번씩 들어온 시점부터 시작한다."""
-    # ponytail: 녹화 시각(log_time) 기준 정렬. 카메라 드라이버 header.stamp 지연 보정은 필요해지면 추가
+    상태와 모든 카메라가 한 번씩 들어온 시점부터 시작한다.
+    관절 상태만 측정 시각(header.stamp, 없으면 녹화 시각)으로 고른다: CPU가 몰리면 녹화 시각(log_time)이
+    뭉쳐서(수십 ms 공백 뒤 한꺼번에) 프레임 사이 자세가 멈췄다 튀는 것처럼 보이기 때문."""
+    # ponytail: 카메라는 녹화 시각 기준 그대로. 카메라 드라이버 header.stamp 지연 보정은 필요해지면 추가
     required = [STATE_TOPIC, *cameras.values()]
     topics = required + ([action_topic] if action_topic else [])
     files = sorted(Path(bag).glob('*.mcap'))  # rosbag2는 크기/시간 기준으로 bag_0, bag_1… 로 나눠 쓴다
     if not files:
         raise FileNotFoundError(f'mcap 파일 없음: {bag}')
-    latest, t_next, dt = {}, None, 1e9 / fps
-    for m in chain.from_iterable(read_ros2_messages(str(f), topics=topics) for f in files):
-        while t_next is not None and m.log_time_ns > t_next:
-            yield dict(latest)
-            t_next += dt
+
+    def read(tps):
+        return chain.from_iterable(read_ros2_messages(str(f), topics=tps) for f in files)
+
+    msgs = [(m.ros_msg.header.stamp.sec * 1_000_000_000 + m.ros_msg.header.stamp.nanosec, m.log_time_ns, m.ros_msg)
+            for m in read([STATE_TOPIC])]  # 관절은 작아서 미리 다 읽음
+    # stamp가 비었거나 다른 시계(로봇 컨트롤러 시각 등)라 녹화 시각과 1초 넘게 어긋나면 녹화 시각을 쓴다
+    gaps = sorted(abs(st - log) for st, log, _ in msgs)
+    use_stamp = bool(gaps) and gaps[len(gaps) // 2] < 1_000_000_000
+    states = sorted((((st if use_stamp else log), msg) for st, log, msg in msgs), key=lambda x: x[0])  # 같은 시각이면 메시지끼리 비교하지 않게
+    stamps = [t for t, _ in states]
+
+    def snap(t):
+        i = bisect.bisect_right(stamps, t) - 1
+        return {**latest, STATE_TOPIC: states[i][1]} if i >= 0 else dict(latest)
+
+    # 프레임 시각은 정수 ns로 (1.7e18 ns에 실수를 더해 가면 256ns 단위로 반올림돼 같은 시각 메시지의 앞뒤가 흔들림)
+    latest, t0, n = {}, None, 0
+    for m in read(topics):
+        while t0 is not None and m.log_time_ns > t0 + round(n * 1e9 / fps):
+            yield snap(t0 + round(n * 1e9 / fps))
+            n += 1
         latest[m.channel.topic] = m.ros_msg
-        if t_next is None and all(t in latest for t in required):
-            t_next = m.log_time_ns
+        if t0 is None and all(t in latest for t in required):
+            t0 = m.log_time_ns
 
 
 def episode_frames(bag, prof, task):

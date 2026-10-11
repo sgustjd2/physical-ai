@@ -35,7 +35,7 @@ def jpeg(color):
     return b.getvalue()
 
 
-def make_episode(root, name, task, result, seconds=2.0):
+def make_episode(root, name, task, result, seconds=2.0, bunch=False):
     d = root / 'episodes' / name
     (d / 'bag').mkdir(parents=True)
     (d / 'episode.json').write_text(json.dumps(
@@ -46,9 +46,13 @@ def make_episode(root, name, task, result, seconds=2.0):
         cam = w.register_msgdef('sensor_msgs/msg/CompressedImage', COMPRESSED)
         msgs = []
         for k in range(int(seconds * 50)):  # 관절 50Hz: 드라이버처럼 이름 순서를 섞고 그리퍼 관절도 끼운다
-            p = k * 0.01
-            msgs.append((T0 + k * 20_000_000, '/joint_states', js,
-                         {'header': HDR, 'name': ['b', 'gripper', 'a'], 'position': [-p, 0.5, p], 'velocity': [], 'effort': []}))
+            p, t = k * 0.01, T0 + k * 20_000_000
+            hdr, log = HDR, t
+            if bunch:  # 측정 시각은 정확한데, 0.6~0.9초 사이 메시지가 녹화기에 0.9초에 한꺼번에 들어옴 (CPU 몰림)
+                hdr = {'stamp': {'sec': t // 1_000_000_000, 'nanosec': t % 1_000_000_000}, 'frame_id': ''}
+                log = T0 + 900_000_000 if 30 <= k <= 45 else t
+            msgs.append((log, '/joint_states', js,
+                         {'header': hdr, 'name': ['b', 'gripper', 'a'], 'position': [-p, 0.5, p], 'velocity': [], 'effort': []}))
         for k in range(int(seconds * 15)):  # 카메라 15Hz
             msgs.append((T0 + k * 66_666_667, '/cam', cam, {'header': HDR, 'format': 'jpeg', 'data': jpeg((k * 8 % 255, 40, 40))}))
         for t, topic, schema, m in sorted(msgs, key=lambda x: x[0]):
@@ -91,5 +95,11 @@ with tempfile.TemporaryDirectory() as tmp:
     rp = json.loads((export_replays(root / 'out', replays) / 'episode_000.json').read_text(encoding='utf-8'))
     assert rp['joints'] == ['a', 'b'] and rp['fps'] == 10 and len(rp['actions']) == ds.num_frames, rp.keys()
     assert np.allclose(rp['actions'][0], f0['action'].numpy(), atol=1e-5) and rp['task'] == '빨간 블록 집기'
+
+    # 녹화 시각이 뭉친 관절 메시지: 측정 시각(header.stamp)으로 골라 프레임마다 같은 간격으로 움직여야 함
+    from convert_lerobot import STATE_TOPIC, joints_of, snapshots
+    make_episode(root, 'bunched', '몰림', 'success', bunch=True)
+    a = [joints_of(s[STATE_TOPIC], ['a'])[0] for s in snapshots(root / 'episodes' / 'bunched' / 'bag', 10, {'front': '/cam'}, None)]
+    assert len(a) > 15 and np.allclose(np.diff(a), 0.05, atol=1e-5), np.round(np.diff(a), 3)  # 50Hz × 0.01 → 10fps 한 프레임 0.05
 
 print('test_convert OK')
