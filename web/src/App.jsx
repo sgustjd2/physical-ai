@@ -511,7 +511,8 @@ export default function App() {
   const focusNode = (id) => {
     setView('edit')
     setNodes((ns) => ns.map((n) => (n.selected === (n.id === id) ? n : { ...n, selected: n.id === id })))
-    requestAnimationFrame(() => fitView({ nodes: [{ id }], maxZoom: 1, duration: 300 }))
+    const still = matchMedia('(prefers-reduced-motion: reduce)').matches
+    requestAnimationFrame(() => fitView({ nodes: [{ id }], maxZoom: 1, duration: still ? 0 : 300 }))
   }
   const goToIssue = () => {
     const first = errors[0] || issues[0]
@@ -589,7 +590,7 @@ export default function App() {
       <Robot.Provider value={robotCtx}>
       <Issues.Provider value={issueMap}>
         <div className="app">
-          <a className="skip-link" href="#workspace">워크플로 편집으로 건너뛰기</a>
+          <a className="skip-link" href="#workspace">작업 영역으로 건너뛰기</a>
           <header className="topbar">
             {/* 상태는 이 안에서만 줄바꿈 → 오류 글·단계 이름이 길어져도 실행·정지·비상정지는 늘 오른쪽 위 같은 자리 */}
             <div className="topbar-status">
@@ -628,13 +629,16 @@ export default function App() {
           <main>
             <section className="workspace" id="workspace" tabIndex={-1} aria-label="워크플로">
               <div className="docbar">
-                <input className="doc-name" name="workflowName" autoComplete="off" value={name} onChange={(e) => setName(e.target.value)}
-                  onBlur={() => !name.trim() && setName(DEFAULT_NAME)} aria-label="워크플로 이름" spellCheck={false} />
+                {/* 운영 보기는 실행·정지만: 이름은 읽기 전용, 편집·저장 도구는 편집/트윈 보기에 */}
+                {view === 'ops' ? <span className="doc-name doc-name-text" title={name}>{name}</span> : (
+                  <input className="doc-name" name="workflowName" autoComplete="off" value={name} onChange={(e) => setName(e.target.value)}
+                    onBlur={() => !name.trim() && setName(DEFAULT_NAME)} aria-label="워크플로 이름" spellCheck={false} />
+                )}
                 <span className={`doc-state${dirty ? ' dirty' : ''}`} title={dirty ? 'GB10에 저장되지 않은 변경이 있습니다' : 'GB10에 저장된 내용과 같습니다'}>
                   {dirty ? '저장 안 됨' : '저장됨'}
                 </span>
                 <span className="doc-meta">{steps.length}단계</span>
-                {issues.length > 0 && (
+                {issues.length > 0 && view !== 'ops' && (
                   <button className={`doc-issues ${errors.length ? 'error' : 'warn'}`} onClick={goToIssue}
                     title={errors.length ? '실행 전 점검: 고쳐야 실행할 수 있습니다. 누르면 첫 문제로 이동' : '실행되지 않는 블록이 있습니다. 누르면 이동'}>
                     <Icon name="alert" />{errors.length ? `문제 ${errors.length}건` : `주의 ${issues.length}건`}
@@ -651,22 +655,28 @@ export default function App() {
                     <Icon name="layout" /><span className="label">정렬</span>
                   </button>
                 )}
-                <button className="ghost" onClick={newWorkflow} title="빈 워크플로로 시작 (되돌리기 가능)">
-                  <Icon name="file" /><span className="label">새로 만들기</span>
-                </button>
-                <AIBuilder gen={gen} connected={connected} onLoad={loadGenerated} />
-                <LibraryMenu items={library.items || []} connected={connected && !library.pending} onOpen={openFromServer}
-                  onDelete={deleteFromServer} onImportFile={() => fileRef.current.click()} onExportFile={exportJson} />
-                <button className="ghost save-btn" onClick={saveToServer} disabled={!connected}
-                  title="GB10에 저장 (같은 이름이면 덮어씀). 저장하면 다른 화면에서도 열 수 있습니다">
-                  <Icon name="save" /><span className="label">저장</span>
-                </button>
+                {view !== 'ops' && (
+                  <>
+                    <button className="ghost" onClick={newWorkflow} title="빈 워크플로로 시작 (되돌리기 가능)">
+                      <Icon name="file" /><span className="label">새로 만들기</span>
+                    </button>
+                    <AIBuilder gen={gen} connected={connected} onLoad={loadGenerated} />
+                    <LibraryMenu items={library.items || []} connected={connected && !library.pending} onOpen={openFromServer}
+                      onDelete={deleteFromServer} onImportFile={() => fileRef.current.click()} onExportFile={exportJson} />
+                    <button className="ghost save-btn" onClick={saveToServer} disabled={!connected}
+                      title="GB10에 저장 (같은 이름이면 덮어씀). 저장하면 다른 화면에서도 열 수 있습니다">
+                      <Icon name="save" /><span className="label">저장</span>
+                    </button>
+                  </>
+                )}
                 <input ref={fileRef} type="file" accept=".json,application/json" hidden onChange={importJson} />
               </div>
               <Notice notice={notice} onClose={closeNotice} />
               {view === 'ops' ? (
                 <OpsView status={status} steps={steps} labelOf={labelOf} runs={runs} connected={connected} viewer={viewer}
-                  onFocusNode={focusNode} onHome={() => moveHome()} />
+                  name={name.trim() || DEFAULT_NAME} hasLoop={nodes.some((n) => n.type === 'loop')}
+                  onFix={(id, todo) => { focusNode(id); setNotice({ tone: 'warn', text: todo }) }} // 편집으로 가도 할 일은 알림으로 남김
+                  onHome={() => moveHome()} onRerun={() => tryRun('sim')} />
               ) : view === 'twin' ? (
                 <div className="twin">
                   {viewer}
@@ -733,13 +743,14 @@ export default function App() {
                   <CameraPanel id="twin-camera-view" connected={connected} defaultTopic={status.camera || ''} value={camView} onChange={setCamView} bare />
                 </section>
               )}
-              <Jog names={names} home={status.home} disabled={!connected || estop || (running && status.node !== 'jog')} />
-              <Tabs tabs={[
+              {/* 조그·녹화·기록·토픽은 엔지니어 도구라 운영 보기에서는 숨김 (편집/트윈 보기에 그대로) */}
+              {view !== 'ops' && <Jog names={names} home={status.home} disabled={!connected || estop || (running && status.node !== 'jog')} />}
+              {view !== 'ops' && <Tabs tabs={[
                 { id: 'rec', label: <>녹화{episode.recording && <span className="tab-dot" aria-label="녹화 중" />}</>, content: <Episodes episode={episode} connected={connected} notify={setNotice} /> },
                 { id: 'camera', label: '카메라', lazy: true, content: <CameraPanel connected={connected} defaultTopic={status.camera || ''} value={camView} onChange={setCamView} /> },
                 { id: 'log', label: '기록', content: <Logs entries={log.entries} labelOf={labelOf} /> },
                 { id: 'topics', label: '토픽', content: <Topics connected={connected} /> },
-              ]} />
+              ]} />}
             </aside>
           </main>
           {picker && <BlockPicker anchor={picker.anchor} title={picker.title} live={specsLive} onClose={closePicker} onPick={(type) => add(type, picker.at)} />}

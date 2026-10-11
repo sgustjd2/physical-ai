@@ -7,7 +7,8 @@ assert.equal(g('idle', ''), null)
 assert.equal(g('done', ''), null)
 assert.equal(g('error', 'x', true).title, '비상정지 중입니다') // 비상정지가 먼저
 assert.deepEqual(g('stopped', '').actions, ['home'])
-assert.deepEqual(g('stopped', '', false, 'sim').actions, []) // 시뮬레이션 정지에 실제 팔 홈 이동을 권하지 않음
+assert.deepEqual(g('stopped', '', false, 'sim').actions, ['rerun']) // 시뮬레이션 정지: 실제 팔 홈 이동 대신 다시 시뮬레이션
+assert.equal(recoveryGuide({ state: 'running', estop: true, connected: false }).title, '실행 서버와 연결이 끊겼습니다') // 연결 끊김이 먼저 (화면 상태가 최신 아님)
 
 // 실행기 오류 문구(ros/nodes) → 원인·할 일·바로가기, 원문은 예외 이름을 빼고 보여 줌
 const r = g('error', 'RuntimeError: 너무 빠름(joint2): 이동 시간을 0.8초 이상으로')

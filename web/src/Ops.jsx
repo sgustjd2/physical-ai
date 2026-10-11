@@ -19,6 +19,9 @@ const KPIS = [
 ]
 const fmt = (v, digits = 0) => (v == null ? '—' : v.toLocaleString('ko-KR', { minimumFractionDigits: digits, maximumFractionDigits: digits }))
 const md = (d) => `${+d.slice(5, 7)}월 ${+d.slice(8, 10)}일`
+// 보기 선택(기간·집계 대상)은 이 브라우저에 기억 (저장이 막혀도 동작)
+const remembered = (key, init) => { try { return localStorage.getItem(key) || init } catch { return init } }
+const remember = (key, v) => { try { localStorage.setItem(key, v) } catch { /* 저장 불가 */ } }
 
 // 여러 날 요약 합치기 (평균 소요는 완료 수로 가중)
 function sum(days, mode) {
@@ -33,16 +36,16 @@ function sum(days, mode) {
   return s
 }
 
-// 비교 문구: vs = '어제' | '이전 14일'. 증감은 색만이 아니라 ▲▼·숫자·문구로
+// 비교 문구: vs = '어제' | '이전 14일'. 증감은 색만이 아니라 화살표·숫자·문구로
 function Delta({ now, prev, k, vs }) {
-  if (now == null) return <span className="ops-delta">기록 없음</span>
+  if (now == null) return <span className="ops-delta">—</span>
   if (prev == null) return <span className="ops-delta">{vs} 기록 없음</span>
   const d = Math.round((now - prev) * 10) / 10
   if (!d) return <span className="ops-delta">{vs} 대비 변화 없음</span>
   const better = k.lowerBetter ? d < 0 : d > 0
   return (
     <span className={`ops-delta ${better ? 'up' : 'down'}`}>
-      {vs} 대비 <b>{d > 0 ? '▲' : '▼'} {fmt(Math.abs(d), k.digits)}</b>
+      {vs} 대비 <b><Icon name={d > 0 ? 'up' : 'down'} size={12} />{d > 0 ? '증가' : '감소'} {fmt(Math.abs(d), k.digits)}</b>
     </span>
   )
 }
@@ -73,11 +76,14 @@ function DayBars({ days, mode }) {
           )
         })}
       </div>
-      <table className="sr-only">
-        <caption>일별 실행 ({MODE[mode]})</caption>
-        <thead><tr><th scope="col">날짜</th><th scope="col">실행</th><th scope="col">완료</th><th scope="col">정지·오류</th></tr></thead>
-        <tbody>{days.map((d) => <tr key={d.date}><td>{md(d.date)}</td><td>{d[mode].runs}</td><td>{d[mode].done}</td><td>{d[mode].stopped + d[mode].error}</td></tr>)}</tbody>
-      </table>
+      {/* 표는 display:table 이라 .sr-only 크기(1px)를 무시하고 자리를 차지함 → 감싸서 숨김 */}
+      <div className="sr-only">
+        <table>
+          <caption>일별 실행 ({MODE[mode]})</caption>
+          <thead><tr><th scope="col">날짜</th><th scope="col">실행</th><th scope="col">완료</th><th scope="col">정지·오류</th></tr></thead>
+          <tbody>{days.map((d) => <tr key={d.date}><td>{md(d.date)}</td><td>{d[mode].runs}</td><td>{d[mode].done}</td><td>{d[mode].stopped + d[mode].error}</td></tr>)}</tbody>
+        </table>
+      </div>
     </figure>
   )
 }
@@ -96,68 +102,83 @@ function exportCsv(days) {
   URL.revokeObjectURL(a.href)
 }
 
-export function OpsView({ status, steps, labelOf, runs, connected, viewer, onFocusNode, onHome }) {
-  const [mode, setMode] = useState('real')
-  const [period, setPeriod] = useState('today')
+export function OpsView({ status, steps, labelOf, runs, connected, viewer, name, hasLoop, onFix, onHome, onRerun }) {
+  const [mode, setModeState] = useState(() => remembered('ops.mode', 'real'))
+  const [period, setPeriodState] = useState(() => remembered('ops.period', 'today'))
+  const setMode = (m) => { setModeState(m); remember('ops.mode', m) }
+  const setPeriod = (p) => { setPeriodState(p); remember('ops.period', p) }
   const t = useRunTimer(status)
-  const state = status.estop ? 'estop' : status.state
+  // 신호등: 연결 끊김(회색) / 실행 중(파랑) / 완료(초록) / 정지(노랑) / 오류·비상정지(빨강)
+  const state = !connected ? 'offline' : status.estop ? 'estop' : status.state
   const act = status.active?.length ? status.active : [status.node]
   const idx = Math.max(...act.map((id) => steps.indexOf(id)))
   const [done, total] = status.loop || []
-  const guide = recoveryGuide(status)
+  const guide = recoveryGuide({ ...status, connected })
   const days = runs?.days?.length === 28 ? runs.days : null
   const cur = period === 'today' ? runs?.today?.[mode] : days && sum(days.slice(14), mode)
   const prev = period === 'today' ? runs?.yesterday?.[mode] : days && sum(days.slice(0, 14), mode)
   const vs = period === 'today' ? '어제' : '이전 14일'
+  const lastDone = runs?.recent?.find((r) => r.name === name && r.mode === status.mode && r.state === 'done')
+  const where = { running: `${idx + 1} / ${steps.length}단계`, stopped: `${idx + 1} / ${steps.length}단계에서 멈춤`, error: `${idx + 1} / ${steps.length}단계에서 멈춤` }
+  const seg = (i) => (status.state === 'done' ? 'past' : i < idx ? 'past' : i === idx ? 'now' : '')
   return (
-    <div className={`ops${connected ? '' : ' stale'}`}>
+    <div className="ops">
       <div className="ops-side">
         <section className={`ops-tile ops-state ${state}`} aria-label="작업 상태">
           <span className="ops-label">작업 상태</span>
-          <strong className="ops-big"><span className="dot" aria-hidden="true" />{state === 'estop' ? '비상정지' : STATE_LABEL[state] ?? state}</strong>
-          <span className="ops-sub">{state === 'idle' ? '실행 버튼으로 시작합니다' : MODE[status.mode] || ''}</span>
+          <strong className="ops-state-word">
+            <span className="dot" aria-hidden="true" />
+            {{ offline: '연결 끊김', estop: '비상정지' }[state] ?? STATE_LABEL[state] ?? state}
+          </strong>
+          {state === 'offline' ? <span className="ops-sub">마지막으로 받은 상태: {STATE_LABEL[status.state] ?? status.state}</span>
+            : state === 'idle' ? <span className="ops-sub">위쪽 실행 버튼으로 시작합니다</span>
+              : status.mode && <span className={`mode ${status.mode}`}>{MODE[status.mode]}</span>}
         </section>
         {guide && (
-          <section className={`ops-guide ${state}`} aria-labelledby="ops-guide-title">
-            <h3 id="ops-guide-title"><Icon name="alert" />{guide.title}</h3>
+          <section className={`ops-guide ${state}`} role={state === 'stopped' ? 'status' : 'alert'} aria-labelledby="ops-guide-title">
+            <h2 id="ops-guide-title"><Icon name="alert" />{guide.title}</h2>
             <p>{guide.todo}</p>
-            {guide.detail && <p className="ops-guide-detail" title={guide.detail}>{guide.detail}</p>}
+            {guide.detail && (
+              <details className="ops-guide-detail">
+                <summary>오류 원문</summary>
+                <p>{guide.detail}</p>
+              </details>
+            )}
             {guide.actions.length > 0 && (
               <div className="ops-guide-actions">
-                {guide.actions.includes('edit') && status.node && (
-                  <button onClick={() => onFocusNode(status.node)}>문제 단계 보기</button>
-                )}
-                {guide.actions.includes('home') && (
-                  <button onClick={onHome} disabled={!connected || status.estop}><Icon name="home" />홈으로 이동</button>
-                )}
+                {guide.actions.includes('edit') && status.node && <button onClick={() => onFix(status.node, guide.todo)}>문제 단계 보기</button>}
+                {guide.actions.includes('home') && <button onClick={onHome} disabled={!connected || status.estop}><Icon name="home" />홈으로 이동</button>}
+                {guide.actions.includes('rerun') && <button onClick={onRerun} disabled={!connected || status.estop}><Icon name="sim" />다시 시뮬레이션</button>}
               </div>
             )}
           </section>
         )}
-        <section className="ops-tile" aria-label="현재 단계">
+        <section className={`ops-tile ops-step ${state}`} aria-label="현재 단계">
           <span className="ops-label">현재 단계</span>
-          <strong className="ops-mid" title={status.node ? labelOf(status.node) : ''}>
-            {status.node && status.state !== 'idle' ? labelOf(status.node) : '—'}
-          </strong>
-          <span className="ops-sub">{idx >= 0 && status.state === 'running' ? `${idx + 1} / ${steps.length}단계${act.length > 1 ? ` · 병렬 ${act.length}개` : ''}` : `${steps.length}단계 워크플로`}</span>
-        </section>
-        <section className="ops-tile" aria-label="반복 진행">
-          <span className="ops-label">반복 진행</span>
-          {total ? (
-            <>
-              <strong className="ops-big">{done} <small>/ {total}회</small></strong>
-              <progress max={total} value={done} aria-label={`반복 ${total}회 중 ${done}회 완료`} />
-            </>
-          ) : (
-            <><strong className="ops-big">—</strong><span className="ops-sub">반복 블록이 아직 돌지 않았습니다</span></>
+          <strong className="ops-mid">{status.node && status.state !== 'idle' && status.state !== 'done' ? labelOf(status.node) : '—'}</strong>
+          <span className="ops-sub">{status.state === 'done' ? `${steps.length}단계 모두 완료` : idx >= 0 && where[status.state] ? where[status.state] : `${steps.length}단계 워크플로`}</span>
+          {steps.length > 0 && steps.length <= 40 && (
+            <span className="ops-steps" aria-hidden="true">{steps.map((s, i) => <i key={s} className={seg(i)} />)}</span>
           )}
         </section>
+        {hasLoop && (
+          <section className="ops-tile" aria-label="반복 진행">
+            <span className="ops-label">반복 진행</span>
+            {total ? (
+              <>
+                <strong className="ops-big">{done} <small>/ {total}회</small></strong>
+                <progress max={total} value={done} aria-label={`반복 ${total}회 중 ${done}회 완료`} />
+              </>
+            ) : <><strong className="ops-big">—</strong><span className="ops-sub">실행하면 반복 횟수가 보입니다</span></>}
+          </section>
+        )}
         <section className="ops-tile" aria-label={status.state === 'running' ? '경과 시간' : '마지막 실행 시간'}>
           <span className="ops-label">{status.state === 'running' ? '경과 시간' : '마지막 실행 시간'}</span>
-          <strong className="ops-big">{t == null ? '—' : <>{t.toFixed(1)} <small>초</small></>}</strong>
+          <strong className="ops-big">{t == null ? '—' : <>{fmt(t, 1)} <small>초</small></>}</strong>
+          {status.state === 'running' && lastDone && <span className="ops-sub">지난 완료 {fmt(lastDone.seconds, 1)}초</span>}
         </section>
         <section className="ops-recent" aria-labelledby="ops-recent-title">
-          <h3 id="ops-recent-title" className="ops-label">최근 실행</h3>
+          <h2 id="ops-recent-title">최근 실행</h2>
           {!runs ? <p className="ops-empty">기록을 받는 중…</p> : !runs.recent?.length ? (
             <p className="ops-empty">아직 실행 기록이 없습니다. 실행 버튼으로 워크플로를 시작하면 여기에 쌓입니다.</p>
           ) : (
@@ -166,9 +187,12 @@ export function OpsView({ status, steps, labelOf, runs, connected, viewer, onFoc
               <tbody>
                 {runs.recent.map((r) => (
                   <tr key={r.start + r.name}>
-                    <td className="num">{r.start.slice(11, 16)}</td>
-                    <td className="name" title={`${r.name} · ${MODE[r.mode]}${r.cycles ? ` · 반복 ${r.cycles}회` : ''}`}>
-                      {r.name}{r.mode === 'sim' && <span className="ops-tag">시뮬</span>}
+                    {/* 오늘이면 시:분, 지난 날이면 월/일 */}
+                    <td className="num" title={r.start.replace('T', ' ').slice(0, 16)}>
+                      {r.start.slice(0, 10) === runs.date ? r.start.slice(11, 16) : `${+r.start.slice(5, 7)}/${+r.start.slice(8, 10)}`}
+                    </td>
+                    <td className="name">
+                      <span>{r.name}</span>{r.mode === 'sim' && <span className="ops-tag">시뮬</span>}
                     </td>
                     <td><span className={`ops-result ${r.state}`}>{RESULT[r.state] || r.state}</span></td>
                     <td className="num">{fmt(r.seconds, 1)}초</td>
@@ -182,12 +206,13 @@ export function OpsView({ status, steps, labelOf, runs, connected, viewer, onFoc
       {viewer}
       <section className="ops-kpis" aria-labelledby="ops-kpi-title">
         <div className="ops-kpi-head">
-          <h3 id="ops-kpi-title">
-            운영 현황
-            <span className="ops-period">
+          <div className="ops-kpi-title">
+            <h2 id="ops-kpi-title">운영 현황</h2>
+            <p className="ops-period">
               {period === 'today' ? (runs?.date ? `${md(runs.date)} · 어제와 비교` : '') : days ? `${md(days[14].date)}~${md(days[27].date)} · 이전 14일과 비교` : ''}
-            </span>
-          </h3>
+              {!connected && runs && ' · 연결이 끊겨 마지막으로 받은 값'}
+            </p>
+          </div>
           <div className="ops-kpi-tools">
             <div className="segmented" role="radiogroup" aria-label="기간">
               {Object.entries(PERIOD).map(([p, label]) => (
@@ -207,13 +232,18 @@ export function OpsView({ status, steps, labelOf, runs, connected, viewer, onFoc
           </div>
         </div>
         <div className="ops-kpi-grid">
-          {KPIS.map((k) => (
-            <div key={k.key} className="ops-kpi">
-              <span className="ops-label">{k.label}<Hint label={`${k.label} 정의`}>{k.def}</Hint></span>
-              <strong>{fmt(cur ? k.get(cur) : null, k.digits)}<small>{k.unit}</small></strong>
-              {cur ? <Delta now={k.get(cur)} prev={prev ? k.get(prev) : null} k={k} vs={vs} /> : <span className="ops-delta">{runs ? '기록 없음' : '받는 중…'}</span>}
-            </div>
-          ))}
+          {KPIS.map((k) => {
+            const v = cur ? k.get(cur) : null
+            return (
+              <div key={k.key} className="ops-kpi">
+                <span className="ops-label">{k.label}<Hint label={`${k.label} 정의`}>{k.def}</Hint></span>
+                <strong>{fmt(v, k.digits)}{v != null && <small>{k.unit}</small>}</strong>
+                {!runs ? <span className="ops-delta">받는 중…</span>
+                  : !cur?.runs ? <span className="ops-delta">실행 기록 없음</span>
+                    : <Delta now={v} prev={prev?.runs ? k.get(prev) : null} k={k} vs={vs} />}
+              </div>
+            )
+          })}
         </div>
         {period === 'days' && days && <DayBars days={days.slice(14)} mode={mode} />}
       </section>
