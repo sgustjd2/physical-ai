@@ -4,9 +4,12 @@
 시뮬레이션 실행에서는 AI를 부르지 않고 '시뮬레이션에서 갈 방향'으로 간다.
 """
 import io
+import json
+from datetime import datetime
 
 from rclpy.qos import qos_profile_sensor_data
 from sensor_msgs.msg import CompressedImage, Image
+from std_msgs.msg import String
 
 from nodes import field, node
 
@@ -86,6 +89,11 @@ def vlm_check(ctx, d):
     r = ai_client.ask_json([ai_client.image_block(data, media), {'type': 'text', 'text': q}], SCHEMA, SYSTEM)
     ans = '예' if r['answer'] == 'yes' else '아니오'
     ctx.log(f'AI 판단: {ans} ({CONF[r["confidence"]]}) — {r["reason"]} [질문: {q}]')
+    # 녹화 중이면 녹화기가 에피소드에 라벨로 저장한다 (학습 데이터: 어떤 장면에서 무엇을 판단했나)
+    ctx.publish('/workflow/vision', String(data=json.dumps({
+        'time': datetime.now().astimezone().isoformat(timespec='milliseconds'), 'node': ctx.current,
+        'question': q, 'answer': r['answer'], 'confidence': r['confidence'], 'reason': r['reason'], 'camera': topic,
+    }, ensure_ascii=False)))
     if r['confidence'] == 'low' and d.get('on_low', '정지') == '정지':
         raise RuntimeError(f'AI가 확신하지 못함: {r["reason"]}')
     return r['answer']

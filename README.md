@@ -159,10 +159,11 @@ def inspect(ctx, d):
 ```
 data/episodes/20261010-141316-372_빨간_블록_집기/
   bag/            rosbag2 (mcap): 관절 상태, 이동 명령(/workflow/command), TF, 카메라 …
-  episode.json    task(지시문), result, robot, topics, started/ended/duration, workflow
+  episode.json    task(지시문), result, robot, topics, started/ended/duration, workflow, vision(녹화 중 AI 비전 판단 라벨)
   record.log
 ```
 확인: `ros2 bag info data/episodes/<이름>/bag` 또는 [Foxglove](https://foxglove.dev)로 mcap 열기.
+데모 프로파일은 카메라(모의 카메라)도 녹화하고, 녹화 중 AI 비전 판단이 있으면 질문·답·확신·근거·녹화 시작부터의 시각(t)을 `episode.json`의 `vision`에 남깁니다 (LeRobot 변환 시 `conversion.json`의 에피소드 항목에도 복사).
 녹화기는 대상 토픽 구독이 실제로 시작된 뒤에 "녹화 중"으로 응답하므로 시작 직후 동작도 빠지지 않습니다.
 전원 차단 등으로 마무리 못 한 에피소드는 다음 기동 때 `result: interrupted`로 표시됩니다 (`ros2 bag reindex`로 bag 복구 가능).
 

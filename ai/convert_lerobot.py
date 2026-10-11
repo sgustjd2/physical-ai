@@ -162,7 +162,8 @@ def convert(paths, out, repo_id=None, robots_dir=ROOT / 'robots', results=('succ
                 continue
             ds.save_episode()
             used.append({'episode_index': len(used), 'source': d.name, 'task': e['task'],
-                         'result': e['result'], 'frames': count})
+                         'result': e['result'], 'frames': count,
+                         **({'vision': e['vision']} if e.get('vision') else {})})  # 녹화 중 AI 비전 판단 라벨
             print(f'에피소드 {len(used) - 1}: {d.name} ({count} 프레임)')
     finally:
         ds.finalize()

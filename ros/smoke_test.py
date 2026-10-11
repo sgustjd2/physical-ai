@@ -113,6 +113,7 @@ assert ep['task'] == '스모크 테스트' and ep['result'] == 'success', ep
 meta = yaml.safe_load((DATA / ep['name'] / 'bag' / 'metadata.yaml').read_text())['rosbag2_bagfile_information']
 counts = {t['topic_metadata']['name']: t['message_count'] for t in meta['topics_with_message_count']}
 assert counts.get('/joint_states', 0) > 5 and counts.get('/workflow/command', 0) == 1, counts
+assert counts.get('/camera/color/image_raw/compressed', 0) > 0, counts  # 모의 카메라 영상도 녹화 (LeRobot 영상 입력)
 info = json.loads((DATA / ep['name'] / 'episode.json').read_text(encoding='utf-8'))
 assert info['robot'] and info['workflow']['nodes'], info.keys()
 
@@ -209,5 +210,20 @@ frames = []
 node.create_subscription(CompressedImage, states[-1]['camera'], frames.append, 10)
 spin_until(lambda: len(frames) >= 3, 10)
 assert frames[-1].format == 'jpeg' and bytes(frames[-1].data[:2]) == b'\xff\xd8', frames[-1].format  # JPEG 시작 표식
+
+# 16) AI 비전 판단 라벨: 녹화 중 /workflow/vision 으로 온 판단이 episode.json 의 vision 에 남는다
+#     (실제 AI 호출은 API 키가 필요해 여기선 비전 판단 블록이 보내는 메시지만 흉내)
+vision = node.create_publisher(String, '/workflow/vision', 10)
+spin_until(lambda: vision.get_subscription_count() > 0, 5)
+send([{'id': 'e1', 'type': 'episode_start', 'data': {'task': '비전 라벨'}}, wait_node('w', 1.5),
+      {'id': 'e2', 'type': 'episode_end', 'data': {'result': 'success'}}],
+     [{'source': 's', 'target': 'e1'}, {'source': 'e1', 'target': 'w'}, {'source': 'w', 'target': 'e2'}])
+spin_until(lambda: episode.get('recording'), 10)
+vision.publish(String(data=json.dumps({'node': 'v', 'question': '부품이 있나요?', 'answer': 'yes',
+                                       'confidence': 'high', 'reason': '빨간 블록이 보임'}, ensure_ascii=False)))
+spin_until(lambda: states and states[-1]['state'] in ('done', 'error'), 15)
+spin_until(lambda: not episode['recording'] and episode['episodes'][0]['task'] == '비전 라벨', 10)
+info = json.loads((DATA / episode['episodes'][0]['name'] / 'episode.json').read_text(encoding='utf-8'))
+assert len(info.get('vision', [])) == 1 and info['vision'][0]['answer'] == 'yes' and info['vision'][0]['t'] >= 0, info.get('vision')
 
 print('smoke test OK')

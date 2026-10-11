@@ -2,10 +2,11 @@
 
   /episode/cmd    ← {"op": "start", "id", "task", "meta": {...}} | {"op": "stop", "id", "result"}
   /episode/status → {"recording", "current", "episodes": [최근 20개 요약], "ack": 처리한 cmd id, "error"}
+  /workflow/vision ← AI 비전 판단 {"time", "node", "question", "answer", "confidence", "reason", "camera"} (녹화 중일 때만 저장)
 
 저장 위치: <data_dir>/<YYYYmmdd-HHMMSS-mmm>_<작업>/
   bag/          rosbag2 (mcap). `ros2 bag info`, Foxglove, LeRobot 변환의 입력
-  episode.json  작업 설명(지시문), 결과, 로봇, 토픽, 시각, 워크플로
+  episode.json  작업 설명(지시문), 결과, 로봇, 토픽, 시각, 워크플로, vision(녹화 중 AI 비전 판단 라벨)
   record.log    ros2 bag record 출력
 """
 import json
@@ -42,6 +43,7 @@ class Recorder(Node):
         self.current = None
         self.pub = self.create_publisher(String, '/episode/status', LATCHED)
         self.create_subscription(String, '/episode/cmd', self.on_cmd, 10)
+        self.create_subscription(String, '/workflow/vision', self.on_vision, 10)
         self.create_timer(1.0, self.watch)
         self.mark_interrupted()
         self.get_logger().info(f'녹화 위치 {self.data_dir}, 토픽 {self.topics}')
@@ -83,6 +85,17 @@ class Recorder(Node):
             self.get_logger().error(f'{cmd.get("op")}: {e!r}')
             self.publish(ack=cmd.get('id'), error=str(e))
 
+    def on_vision(self, msg):
+        if not self.current:
+            return
+        try:
+            label = json.loads(msg.data)
+        except ValueError:
+            return
+        label['t'] = round(time.time() - self.current['t0'], 3)  # 녹화 시작부터 초 (bag 시간축과 맞추기)
+        self.current.setdefault('vision', []).append(label)
+        self.write()
+
     def start(self, cmd):
         if self.proc:
             raise RuntimeError(f'이미 녹화 중: {self.current["name"]}')
@@ -105,8 +118,9 @@ class Recorder(Node):
             raise
 
     def wait_subscribed(self, timeout=10):
-        """녹화기가 지금 존재하는 대상 토픽을 실제로 구독할 때까지 기다린다. 그 전의 동작은 녹화되지 않기 때문."""
-        existing = {t for t, _ in self.get_topic_names_and_types()} & set(self.topics)
+        """녹화기가 지금 발행 중인 대상 토픽을 실제로 구독할 때까지 기다린다. 그 전의 동작은 녹화되지 않기 때문.
+        구독자만 있는 토픽(예: 아직 판단이 없는 /workflow/vision)은 rosbag2가 발행자가 생길 때 구독하므로 기다리지 않는다."""
+        existing = {t for t, _ in self.get_topic_names_and_types() if t in self.topics and self.count_publishers(t) > 0}
         t_end = time.monotonic() + timeout
         while time.monotonic() < t_end:
             if self.proc.poll() is not None:
