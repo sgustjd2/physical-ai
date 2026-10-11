@@ -579,14 +579,16 @@ export default function App() {
         <div className="app">
           <a className="skip-link" href="#workspace">워크플로 편집으로 건너뛰기</a>
           <header className="topbar">
-            <h1 translate="no">Physical AI Workflow</h1>
-            <RobotMode connected={connected} />
-            <HealthBar connected={connected} everConnected={everConnected}
-              executor={specsLive} recorder={!episode.pending} />
-            <RunStatus status={status} steps={steps} labelOf={labelOf} />
-            <RecChip episode={episode} />
-            {status.msg && <span className="topbar-msg error-text" title={status.msg}>{status.msg}</span>}
-            <span className="spacer" />
+            {/* 상태는 이 안에서만 줄바꿈 → 오류 글·단계 이름이 길어져도 실행·정지·비상정지는 늘 오른쪽 위 같은 자리 */}
+            <div className="topbar-status">
+              <h1 translate="no">Physical AI Workflow</h1>
+              <RobotMode connected={connected} />
+              <HealthBar connected={connected} everConnected={everConnected}
+                executor={specsLive} recorder={!episode.pending} />
+              <RunStatus status={status} steps={steps} labelOf={labelOf} />
+              <RecChip episode={episode} />
+              {status.msg && <span className="topbar-msg error-text" title={status.msg}>{status.msg}</span>}
+            </div>
             <div className="actions">
               <button className="sim-btn" onClick={() => tryRun('sim')} disabled={!connected || running || estop}
                 title="디지털 트윈에서만 실행합니다. 실제 로봇·장비는 움직이지 않습니다">

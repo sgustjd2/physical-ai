@@ -163,9 +163,9 @@ input:focus-visible, select:focus-visible, textarea:focus-visible { outline-offs
 /* ---- 상단 바 ---- */
 .app { display: flex; flex-direction: column; height: 100%; }
 .topbar {
+  --topbar-row: max(40px, var(--control-h));
   display: flex;
-  flex-wrap: wrap;
-  align-items: center;
+  align-items: flex-start;
   gap: 8px 10px;
   min-height: 52px;
   padding: 8px 16px;
@@ -173,8 +173,10 @@ input:focus-visible, select:focus-visible, textarea:focus-visible { outline-offs
   border-bottom: 1px solid var(--border);
 }
 .topbar h1 { margin-right: 4px; font-size: var(--text-md); font-weight: 650; letter-spacing: -0.01em; }
+.topbar-status { display: flex; flex: 1; flex-wrap: wrap; align-items: center; gap: 8px 10px; min-width: 0; min-height: var(--topbar-row); }
 .spacer { flex: 1; }
 .actions { display: flex; align-items: center; gap: 6px; }
+.topbar > .actions { min-height: var(--topbar-row); }
 .topbar-msg { max-width: 40ch; overflow: hidden; font-size: var(--text-sm); text-overflow: ellipsis; white-space: nowrap; }
 
 .chip {
@@ -772,11 +774,10 @@ aside:has(> .tabs #panel-camera:not([hidden])) > .tabs { flex-basis: 380px; }
 /* ---- 좁은 화면 (태블릿 세로·폰) ---- */
 @media (max-width: 900px) {
   .app { height: auto; min-height: 100%; }
-  .topbar { padding: 8px 12px; }
-  .topbar .spacer { display: none; }
+  .topbar { flex-wrap: wrap; padding: 8px 12px; }
+  .topbar-status { flex-basis: 100%; }
   .topbar-msg { flex-basis: 100%; max-width: 100%; order: 5; }
-  .actions { width: 100%; order: 10; }
-  button.estop-btn { position: fixed; right: 16px; bottom: calc(16px + env(safe-area-inset-bottom)); z-index: 70; flex-direction: column; gap: 2px; width: 76px; height: 76px; margin: 0; padding: 0; border-radius: 50%; box-shadow: 0 0 0 2px var(--danger), var(--shadow); font-size: var(--text-xs); }
+  .actions { width: 100%; }
   .actions button { flex: 1; }
   main { grid-template-columns: minmax(0, 1fr); }
   .flow, .twin { height: 62vh; min-height: 380px; flex: none; }
@@ -820,7 +821,8 @@ aside:has(> .tabs #panel-camera:not([hidden])) > .tabs { flex-basis: 380px; }
 /* 비상정지: 빨강 + 노랑 테두리 (비상정지 스위치 관례, ISO 13850). 다른 버튼과 떨어뜨려 둔다 */
 button.estop-btn {
   gap: 8px;
-  min-height: 40px;
+  min-width: 9.75em; /* '비상정지 중'으로 바뀌어도 폭이 같게 → 옆 버튼이 밀리지 않음 */
+  min-height: var(--topbar-row, 40px);
   margin-left: 6px;
   padding: 0 16px 0 10px;
   background: var(--danger);
@@ -830,6 +832,10 @@ button.estop-btn {
   font-weight: 700;
 }
 button.estop-btn:hover:not(:disabled) { background: color-mix(in srgb, var(--danger) 86%, #000); border-color: #f2c500; }
+/* 좁은 화면: 오른쪽 아래에 떠 있는 둥근 버튼 (스크롤해도 같은 자리). 위 기본 규칙보다 뒤에 둬야 덮어씀 */
+@media (max-width: 900px) {
+  button.estop-btn { position: fixed; right: 16px; bottom: calc(16px + env(safe-area-inset-bottom)); z-index: 70; flex-direction: column; gap: 2px; width: 76px; min-width: 0; height: 76px; margin: 0; padding: 0; border-radius: 50%; box-shadow: 0 0 0 2px var(--danger), var(--shadow); font-size: var(--text-xs); }
+}
 button.estop-btn[aria-pressed='true'] { background: color-mix(in srgb, var(--danger) 70%, #000); box-shadow: inset 0 2px 6px rgb(0 0 0 / 0.35); opacity: 1; }
 .estop-banner {
   display: flex;
