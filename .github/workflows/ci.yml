@@ -1,4 +1,4 @@
-# 업데이트가 기존 기능을 깨지 않는지 매 push/PR마다 확인: 웹 빌드 + ROS 스택(Docker) 스모크 테스트
+# 업데이트가 기존 기능을 깨지 않는지 매 push/PR마다 확인: 웹 빌드 + ROS 스택(Docker) 스모크 테스트 (amd64·arm64)
 name: ci
 on:
   push:
@@ -18,11 +18,21 @@ jobs:
       - run: npm ci && npm run build && node src/history.test.js && node src/clipboard.test.js && node src/cameraFrames.test.js && node src/check.test.js && node src/scene3d.test.js && node src/motionPlan.test.js && node src/recovery.test.js
         working-directory: web
 
+  # GB10(DGX OS)은 arm64 → 같은 검증을 arm64 러너에서도 (공개 저장소라 무료). 실기 전 arm64 전용 문제(휠·패키지 누락)를 미리 잡음
   ros:
-    runs-on: ubuntu-latest
+    name: ros (${{ matrix.arch }})
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { arch: amd64, runner: ubuntu-latest }
+          - { arch: arm64, runner: ubuntu-24.04-arm }
+    runs-on: ${{ matrix.runner }}
     steps:
       - uses: actions/checkout@v4
       - run: docker compose up -d --build ros
+      - name: 웹 이미지 빌드 (운영과 같은 nginx 이미지)
+        run: docker compose build web
       - name: smoke test (실행·정지·오류·녹화·분기·병렬·반복·시뮬레이션·저장소·AI·홈·비상정지·카메라·다시 보기)
         run: docker compose exec -T ros bash -c "source /opt/ros/jazzy/setup.bash && cd /ros && python3 test_ai.py && python3 smoke_test.py"
       - name: LeRobot 변환 (합성 녹화 테스트 + 방금 녹화된 실제 에피소드)
