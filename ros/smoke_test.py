@@ -43,10 +43,10 @@ estop = node.create_publisher(Bool, '/workflow/estop', 10)
 flag = node.create_publisher(Bool, '/smoke/flag', 10)
 
 
-def spin_until(pred, timeout):
+def spin_until(pred, timeout, why=None):
     t_end = time.monotonic() + timeout
     while not pred():
-        assert time.monotonic() < t_end, f'timeout, states={states[-3:]}, episode.error={episode.get("error")}'
+        assert time.monotonic() < t_end, why() if why else f'timeout, states={states[-3:]}, episode.error={episode.get("error")}'
         rclpy.spin_once(node, timeout_sec=0.05)
 
 
@@ -165,7 +165,8 @@ end = run_until_end([{'id': 'm', 'type': 'move_j', 'data': {'joints': [30, 0, 0,
                     [{'source': 's', 'target': 'm'}, {'source': 'm', 'target': 'g'}], mode='sim')
 assert end['state'] == 'done' and end['mode'] == 'sim', end
 assert all(abs(joints[n] - before[n]) < 0.01 for n in before), '시뮬레이션인데 실제 팔이 움직임'
-assert max(sim_j1) > 29, max(sim_j1)
+# '끝' 상태가 아직 대기열에 남은 트윈 관절 메시지보다 먼저 처리될 수 있음 → 조건이 될 때까지 마저 받는다
+spin_until(lambda: max(sim_j1, default=0) > 29, 5, lambda: max(sim_j1, default=None))
 
 # 10) 서버 저장소: 저장 → 목록에 있음 → 삭제
 graph = {'nodes': [{'id': 's', 'type': 'start'}], 'edges': []}
@@ -274,7 +275,7 @@ sim_j1.clear()
 end = run_until_end([{'id': 'p', 'type': 'play_episode', 'data': {'dataset': 'smoke', 'episode': 0, 'speed': 2}}],
                     [{'source': 's', 'target': 'p'}], timeout=20, mode='sim')
 assert end['state'] == 'done', end
-assert abs(max(sim_j1) - math.degrees(0.5)) < 1, max(sim_j1)  # 마지막 프레임 자세 28.6°까지 (끝나면 트윈은 다시 실제 팔을 따라감)
+spin_until(lambda: abs(max(sim_j1, default=0) - math.degrees(0.5)) < 1, 5, lambda: max(sim_j1, default=None))  # 마지막 프레임 자세 28.6°까지 (끝나면 트윈은 다시 실제 팔을 따라감)
 assert all(abs(joints[n] - before[n]) < 0.01 for n in before), '시뮬레이션인데 실제 팔이 움직임'
 end = run_until_end([{'id': 'p', 'type': 'play_episode', 'data': {'dataset': 'nope', 'episode': 0}}],
                     [{'source': 's', 'target': 'p'}], mode='sim')
