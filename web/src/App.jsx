@@ -9,6 +9,7 @@ import { checkGraph } from './check'
 import { copyText, instantiate, parseClip, restoreLinks } from './clipboard'
 import { Hint } from './Hint'
 import { createHistory } from './history'
+import { motionPlan } from './motionPlan'
 import { Icon } from './icons'
 import { LibraryMenu } from './Library'
 import {
@@ -563,7 +564,11 @@ export default function App() {
     return Object.fromEntries(names.map((n, i) => [n, (Number(editing.data.joints?.[i]) || 0) * Math.PI / 180]))
   }, [editing, names])
   const simRun = running && status.mode === 'sim'
-  const viewer = <Viewer large={view === 'twin'} stale={!connected} ghost={ghost} followCommand={running && !simRun} simRun={simRun} replay={!!episode.playing} />
+  // 경로 미리보기 (motionPlan.js): 위치는 보지 않으므로 드래그 중에는 다시 계산하지 않는다
+  const homeKey = (status.home || []).join()
+  const plan = useMemo(() => motionPlan({ nodes, edges }, names, status.home || []), [snap, names.join(), homeKey]) // eslint-disable-line react-hooks/exhaustive-deps
+  const viewer = <Viewer large={view === 'twin'} stale={!connected} ghost={ghost} followCommand={running && !simRun} simRun={simRun} replay={!!episode.playing}
+    plan={plan} selectedId={editing?.id} />
 
   return (
     <Specs.Provider value={specCtx}>

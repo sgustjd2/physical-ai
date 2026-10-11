@@ -686,6 +686,8 @@ aside:has(> .tabs #panel-camera:not([hidden])) > .tabs { flex-basis: 380px; }
   font-size: var(--text-xs);
 }
 .viewer-reset { position: absolute; top: 6px; right: 6px; background: color-mix(in srgb, var(--surface) 88%, transparent); }
+.viewer-path { position: absolute; top: 6px; right: calc(6px + var(--control-h) + 6px); background: color-mix(in srgb, var(--surface) 88%, transparent); }
+.viewer-path[aria-pressed='true'] { border-color: var(--accent); color: var(--accent); }
 
 .panel { padding: 12px 14px 14px; border-bottom: 1px solid var(--border); }
 .panel-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 8px; }
@@ -872,7 +874,7 @@ button.sim-btn:hover:not(:disabled) { background: var(--accent-soft); border-col
 }
 .menu-title { padding: 4px 6px; color: var(--muted); font-size: var(--text-xs); font-weight: 600; }
 .menu-empty { padding: 6px; font-size: var(--text-sm); }
-.menu-list { display: grid; gap: 1px; max-height: 280px; margin: 0; padding: 0; overflow-y: auto; overscroll-behavior: contain; list-style: none; }
+.menu-list { display: grid; grid-template-columns: minmax(0, 1fr); gap: 1px; max-height: 280px; margin: 0; padding: 0; overflow-y: auto; overscroll-behavior: contain; list-style: none; }
 .menu-list li { display: flex; align-items: center; gap: 2px; }
 .menu-item { flex: 1; justify-content: space-between; gap: 10px; min-width: 0; background: transparent; border-color: transparent; font-size: var(--text-sm); }
 .menu-item:hover:not(:disabled) { background: var(--surface-3); border-color: transparent; }

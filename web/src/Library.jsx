@@ -33,7 +33,7 @@ export function LibraryMenu({ items, connected, onOpen, onDelete, onImportFile, 
               {items.map((w) => (
                 <li key={w.name}>
                   <button className="menu-item" onClick={pick(() => onOpen(w))}>
-                    <span className="menu-item-name">{w.name}</span>
+                    <span className="menu-item-name" title={w.name}>{w.name}</span>
                     <span className="muted">{w.updated ? when.format(new Date(w.updated)) : ''}</span>
                   </button>
                   <button className="icon-btn" onClick={() => onDelete(w)} aria-label={`${w.name} 삭제`} title="삭제 (되돌리기 가능)">
