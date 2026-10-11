@@ -1,7 +1,7 @@
 // 실행 전 점검: 실행하다 멈출 문제를 편집하는 동안 미리 찾는다 (React와 무관 → check.test.js로 확인).
 // 반환: [{ level: 'error' | 'warn', node, text }]. error가 있으면 실행·시뮬레이션을 막는다.
 //   error  같은 장비(resource)를 동시에 쓰는 병렬 갈래, 관절 값·숫자 칸 오류, 고르지 않은 데이터셋, 서버에 없는 블록(실행 경로 안)
-//   warn   시작과 이어지지 않아 실행되지 않는 블록
+//   warn   시작과 이어지지 않아 실행되지 않는 블록, 분기(예/아니오)의 한쪽이 비어 그쪽으로 가면 실행이 끝나는 블록
 // specs: type → 블록 선언 (빈 객체면 아직 못 받은 것 → 타입·칸 검사는 건너뜀), jointCount: 0이면 관절 수 검사 건너뜀
 const RESOURCE = { arm: '로봇팔을', gripper: '그리퍼를' } // 장비 이름 + 조사
 const isNum = (v) => v !== '' && v != null && Number.isFinite(Number(v))
@@ -33,6 +33,10 @@ export function checkGraph({ nodes, edges }, specs, jointCount = 0) {
     if (!reach.has(n.id)) { issues.push({ level: 'warn', node: n.id, text: '시작과 이어지지 않아 실행되지 않습니다' }); continue }
     if (!loaded) continue
     const spec = specs[n.type]
+    // 분기: 예/아니오처럼 갈래가 둘 이상인데 한쪽이 비어 있으면 그쪽으로 갔을 때 조용히 끝남 (반복의 '완료'는 끝내는 게 흔해 제외)
+    const outs = spec?.outputs || []
+    const empty = outs.length > 1 && n.type !== 'loop' ? outs.filter((o) => !(forks.get(`${n.id}|${o.id}`) || []).length) : []
+    if (empty.length && empty.length < outs.length) issues.push({ level: 'warn', node: n.id, text: `'${empty.map((o) => o.label || o.id).join(', ')}' 쪽이 연결되지 않아 그쪽으로 가면 실행이 끝납니다` })
     if (!spec) { issues.push({ level: 'error', node: n.id, text: `이 서버에 없는 블록(${n.type})이라 실행할 수 없습니다` }); continue }
     for (const f of spec.fields) {
       const v = n.data?.[f.key]

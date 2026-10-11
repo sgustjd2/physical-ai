@@ -32,6 +32,12 @@ export function BlockPicker({ anchor, title, live, onPick, onClose }) {
   const [q, setQ] = useState('')
   const ref = useRef()
 
+  // 닫히면 연 버튼으로 포커스를 돌려줌 (블록을 넣었으면 App이 새 블록으로 옮김)
+  useEffect(() => {
+    const opener = document.activeElement
+    return () => { if (opener?.isConnected && (!document.activeElement || document.activeElement === document.body || ref.current?.contains(document.activeElement))) opener.focus() }
+  }, [])
+
   useEffect(() => {
     const outside = (e) => { if (!ref.current?.contains(e.target)) onClose() }
     const esc = (e) => { if (e.key === 'Escape') { e.stopPropagation(); onClose() } }
@@ -58,7 +64,17 @@ export function BlockPicker({ anchor, title, live, onPick, onClose }) {
   const pick = (type) => { onPick(type); onClose() }
 
   return (
-    <div className="picker" ref={ref} role="dialog" aria-label={title} style={{ ...anchor, width: `min(${W}px, calc(100vw - 16px))` }}>
+    <div className="picker" ref={ref} role="dialog" aria-label={title} style={{ ...anchor, width: `min(${W}px, calc(100vw - 16px))` }}
+      onKeyDown={(e) => {
+        if (e.key !== 'ArrowDown' && e.key !== 'ArrowUp') return
+        const items = [...ref.current.querySelectorAll('.pick-item')].filter((b) => b.offsetParent)
+        const i = items.indexOf(document.activeElement)
+        const next = items[e.key === 'ArrowDown' ? i + 1 : i - 1]
+        e.preventDefault()
+        if (next) next.focus()
+        else if (e.key === 'ArrowUp') ref.current.querySelector('input')?.focus()
+      }}
+      onBlur={(e) => { if (e.relatedTarget && !ref.current?.contains(e.relatedTarget)) onClose() }}>
       <div className="picker-head">
         <span className="picker-title">{title}</span>
         <input type="search" name="blockSearch" autoComplete="off" spellCheck={false} autoFocus value={q}

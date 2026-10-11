@@ -25,10 +25,25 @@ import Viewer from './Viewer'
 
 const NODE_W = 220
 const GAP = 40
+const NEW_H = 100 // 끼워 넣을 때 새 블록 높이 어림값 (실제 높이는 그려진 뒤에야 앎)
 const COL_GAP = 48
 const DEFAULT_NAME = '새 워크플로'
 // 그래프를 화면에 맞출 때 왼쪽 위 '블록 추가' 버튼을 피한다
-const FIT = { maxZoom: 1, padding: { top: '64px', right: '24px', bottom: '24px', left: '24px' } }
+// React Flow 화면 읽기 안내 (기본은 영어)
+const FLOW_ARIA = {
+  'node.a11yDescription.default': 'Enter나 Space로 선택, Delete로 삭제, Esc로 취소합니다.',
+  'node.a11yDescription.keyboardDisabled': 'Enter나 Space로 선택한 뒤 화살표로 옮깁니다. Delete로 삭제, Esc로 취소합니다.',
+  'node.a11yDescription.ariaLiveMessage': ({ direction, x, y }) => `선택한 블록을 ${{ up: '위', down: '아래', left: '왼쪽', right: '오른쪽' }[direction] ?? direction}로 옮김 (x ${x}, y ${y})`,
+  'edge.a11yDescription.default': 'Enter나 Space로 연결을 선택하고 Delete로 끊습니다.',
+  'controls.ariaLabel': '화면 조절',
+  'controls.zoomIn.ariaLabel': '확대',
+  'controls.zoomOut.ariaLabel': '축소',
+  'controls.fitView.ariaLabel': '전체 보기',
+  'controls.interactive.ariaLabel': '편집 잠금',
+  'minimap.ariaLabel': '미니맵',
+  'handle.ariaLabel': '연결점',
+}
+const FIT = { maxZoom: 1, minZoom: 0.7, padding: { top: '64px', right: '24px', bottom: '24px', left: '24px' } } // minZoom: 이보다 작으면 노드 글자가 읽히지 않음
 const EDGE_TYPES = { flow: FlowEdge }
 const EDGE_DEFAULTS = { type: 'flow', markerEnd: { type: MarkerType.ArrowClosed } }
 const link = (source, port, target) => ({ id: `${source}-${port}-${target}`, source, target, ...(port !== 'out' ? { sourceHandle: port } : {}) })
@@ -145,7 +160,8 @@ export default function App() {
   const [specList, setSpecList] = useState(() => store.get('nodeTypes', []))
   const [specsLive, setSpecsLive] = useState(false)
   const names = status.joints || []
-  const robotCtx = useMemo(() => ({ camera: status.camera || '', connected, datasets }), [status.camera, connected, datasets])
+  const robotCtx = useMemo(() => ({ camera: status.camera || '', connected, datasets, estop: !!status.estop, running: status.state === 'running' }),
+    [status.camera, connected, datasets, status.estop, status.state])
   const estop = !!status.estop
   const running = status.state === 'running'
   const active = status.active || []
@@ -252,22 +268,40 @@ export default function App() {
   }, [library])
 
   const height = (n) => n.measured?.height ?? 72
-  const fit = () => requestAnimationFrame(() => fitView({ ...FIT, duration: 200 }))
+  const fit = () => requestAnimationFrame(() => fitView({ ...FIT, duration: matchMedia('(prefers-reduced-motion: reduce)').matches ? 0 : 200 }))
 
   // at: { source, port } 그 출력 바로 뒤에 끼워 넣기 (원래 이어지던 단계는 새 블록 뒤로)
   //     { edge } 그 연결 사이에 끼워 넣기
   //     없음 → 선택한 노드 뒤, 선택이 없으면 화면 가운데
+  // 실행 순서의 끝: 기본 출력이 비어 있는 마지막 단계 (없으면 아직 아무것도 안 이은 시작 노드)
+  const tail = () => {
+    for (const sid of [...steps].reverse()) {
+      const n = byId.get(sid)
+      const p = outputsOf(specOf(n?.type))[0]?.id
+      if (n && p && !edges.some((e) => e.source === sid && portOf(e) === p)) return n
+    }
+    const s = nodes.find((n) => n.type === 'start')
+    return s && !edges.some((e) => e.source === s.id) ? s : null
+  }
+  // 새 블록으로 키보드 포커스를 옮김 (블록 선택 창이 닫히며 포커스가 페이지 맨 앞으로 사라지지 않게)
+  // React Flow는 새 노드를 크기를 잴 때까지 숨겨 두어(visibility: hidden) 그동안은 포커스가 무시됨 → 실제로 옮겨질 때까지 몇 번 다시
+  const focusLater = (id, tries = 15) => setTimeout(() => {
+    const el = document.querySelector(`.react-flow__node[data-id="${id}"]`)
+    el?.focus()
+    if (document.activeElement !== el && tries > 0) focusLater(id, tries - 1)
+  }, 40)
   const add = (type, at) => {
     const id = `n${Date.now()}`
     const node = { id, type, data: defaults(specs[type], names), selected: true }
     const newPort = outputsOf(specs[type])[0].id
     const edge = at?.edge && edges.find((e) => e.id === at.edge)
-    const src = edge ? byId.get(edge.source) : at?.source ? byId.get(at.source) : nodes.find((n) => n.selected)
+    const src = edge ? byId.get(edge.source) : at?.source ? byId.get(at.source) : nodes.find((n) => n.selected) ?? tail()
     if (!src) {
       const r = flowRef.current.getBoundingClientRect()
       const c = screenToFlowPosition({ x: r.left + r.width / 2, y: r.top + r.height / 2 })
       node.position = { x: c.x - NODE_W / 2, y: c.y - 36 }
       setNodes((ns) => [...ns.map((n) => ({ ...n, selected: false })), node])
+      focusLater(id)
       return
     }
     const port = edge ? portOf(edge) : at?.port ?? outputsOf(specOf(src.type))[0].id
@@ -280,12 +314,12 @@ export default function App() {
     node.position = tgt && tgt.position.y > src.position.y
       ? { ...tgt.position }
       : { x: src.position.x + ((src.measured?.width ?? NODE_W) - NODE_W) / 2 + col, y: src.position.y + height(src) + GAP }
-    // 아래쪽 같은 열의 노드는 한 칸 내린다
-    setNodes((ns) => [...ns.map((n) => ({
-      ...n, selected: false,
-      position: n.id !== src.id && Math.abs(n.position.x - node.position.x) < NODE_W && n.position.y >= node.position.y
-        ? { ...n.position, y: n.position.y + 72 + GAP } : n.position,
-    })), node])
+    // 아래쪽 같은 열의 노드는 새 블록이 들어갈 만큼 내린다 (원래 간격이 좁아도 겹치지 않게, 서로 간격은 유지)
+    const below = nodes.filter((n) => n.id !== src.id && Math.abs(n.position.x - node.position.x) < NODE_W && n.position.y > src.position.y)
+    const top = Math.min(...below.map((n) => n.position.y))
+    const shift = below.length ? Math.max(0, node.position.y + NEW_H + GAP - top) : 0
+    setNodes((ns) => [...ns.map((n) => ({ ...n, selected: false, position: below.includes(n) ? { ...n.position, y: n.position.y + shift } : n.position })), node])
+    focusLater(id)
     setEdges((es) => [...es.filter((e) => !moved.includes(e)), link(src.id, port, id), ...moved.map((e) => link(id, newPort, e.target))])
   }
 
@@ -377,6 +411,7 @@ export default function App() {
     paste,
     // 툴바 '복사' 버튼: 시스템 클립보드는 https·localhost에서만 쓸 수 있어 실패해도 앱 안 클립보드로 붙여넣기 가능
     copy: () => { const t = copyNodes(); if (t) navigator.clipboard?.writeText(t).catch(() => {}) },
+    labelOf,
   })
 
   // Ctrl+C·Ctrl+X·Ctrl+V: 브라우저 복사/붙여넣기 이벤트를 쓴다 (GB10에 http로 접속해도 동작, 다른 탭에 붙여넣기 가능).
@@ -407,7 +442,7 @@ export default function App() {
   // 입력칸에 글자를 쓰는 중에는 브라우저 기본(입력칸 글자 되돌리기)에 맡긴다
   useEffect(() => {
     const onKey = (e) => {
-      if (!(e.ctrlKey || e.metaKey) || e.altKey || e.target.closest?.('input, textarea, select, [contenteditable="true"]')) return
+      if (!(e.ctrlKey || e.metaKey) || e.altKey || e.target.closest?.('input, textarea, [contenteditable="true"]')) return
       if (e.code !== 'KeyZ' && e.code !== 'KeyY') return
       e.preventDefault()
       if (e.code === 'KeyY' || e.shiftKey) actions.redo()
@@ -446,9 +481,9 @@ export default function App() {
 
   // 드래그 없이 연결하기 (키보드·터치 대안): 인스펙터의 출력별 '다음 단계'
   const stepNo = new Map(steps.map((id, i) => [id, i + 1]))
-  const linkOptions = () => nodes.filter((n) => n.type !== 'start').map((n) => ({
-    id: n.id, text: `${stepNo.has(n.id) ? `${stepNo.get(n.id)}.` : '(연결 안 됨)'} ${labelOf(n.id)}`,
-  }))
+  const linkOptions = () => nodes.filter((n) => n.type !== 'start')
+    .map((n) => ({ id: n.id, no: stepNo.get(n.id) ?? Infinity, text: `${stepNo.has(n.id) ? `${stepNo.get(n.id)}.` : '(연결 안 됨)'} ${labelOf(n.id)}` }))
+    .sort((a, b) => a.no - b.no)
   const linksOf = (id) => edges.filter((e) => e.source === id).map((e) => ({ edgeId: e.id, port: portOf(e), target: e.target }))
   const addLink = (source, port, target) => onConnect({ source, target, sourceHandle: port === 'out' ? null : port })
   const removeLink = (edgeId) => setEdges((es) => es.filter((e) => e.id !== edgeId))
@@ -561,8 +596,10 @@ export default function App() {
   // 표시용 노드·엣지: 실행 상태가 바뀔 때만 새로 만든다 (이름 입력 등 무관한 갱신에 전체 노드가 다시 그려지지 않게)
   const shownNodes = useMemo(() => nodes.map((n) => {
     const on = active.includes(n.id) || (n.id === status.node && ['error', 'stopped'].includes(status.state))
-    return { ...n, deletable: n.type !== 'start', className: on ? `active ${status.state}` : undefined }
-  }), [nodes, active, status.node, status.state])
+    const bad = issueMap.get(n.id)
+    const ariaLabel = `${stepNo.has(n.id) ? `${stepNo.get(n.id)}단계 ` : ''}${labelOf(n.id)}${n.data?.title && specs[n.type] ? ` (${specs[n.type].label})` : ''}${bad ? `, ${bad.some((i) => i.level === 'error') ? '문제' : '주의'} ${bad.length}건` : ''}`
+    return { ...n, ariaLabel, deletable: n.type !== 'start', className: on ? `active ${status.state}` : undefined }
+  }), [nodes, active, status.node, status.state, issueMap, specs]) // eslint-disable-line react-hooks/exhaustive-deps
   const shownEdges = useMemo(() => edges.map((e) => {
     const outs = outputsOf(specOf(byId.get(e.source)?.type))
     const label = outs.length > 1 ? outs.find((o) => o.id === portOf(e))?.label : undefined
@@ -649,13 +686,13 @@ export default function App() {
                 <Segmented className="view-switch" label="보기" value={view} onChange={setView}
                   options={[['edit', '편집'], ['twin', '트윈'], ['ops', '운영', '현장 작업자용: 작업 상태·진행·오늘 운영 현황']]} />
                 {view === 'edit' && (
-                  <button className="ghost" onClick={layout} title="실행 순서대로 자동 배치 (분기·병렬은 옆으로)">
+                  <button className="ghost minor" onClick={layout} title="실행 순서대로 자동 배치 (분기·병렬은 옆으로)">
                     <Icon name="layout" /><span className="label">정렬</span>
                   </button>
                 )}
                 {view !== 'ops' && (
                   <>
-                    <button className="ghost" onClick={newWorkflow} title="빈 워크플로로 시작 (되돌리기 가능)">
+                    <button className="ghost minor" onClick={newWorkflow} title="빈 워크플로로 시작 (되돌리기 가능)">
                       <Icon name="file" /><span className="label">새로 만들기</span>
                     </button>
                     <AIBuilder gen={gen} connected={connected} onLoad={loadGenerated} />
@@ -697,11 +734,13 @@ export default function App() {
                     colorMode="system"
                     fitView
                     fitViewOptions={FIT}
+                    edgesFocusable={false}
+                    ariaLabelConfig={FLOW_ARIA}
                     minZoom={0.2}
                   >
                     <Panel position="top-left" className="add-panel">
                       <button className="add-block" aria-haspopup="dialog" aria-expanded={!!picker && !picker.at}
-                        onClick={(e) => setPicker({ anchor: anchorOf(e.currentTarget), at: null, title: editing ? '선택한 단계 뒤에 추가' : '블록 추가' })}>
+                        onClick={(e) => setPicker({ anchor: anchorOf(e.currentTarget), at: null, title: editing ? '선택한 단계 뒤에 추가' : '맨 끝에 블록 추가' })}>
                         <Icon name="plus" />블록 추가
                       </button>
                       <span className="add-sep" aria-hidden="true" />

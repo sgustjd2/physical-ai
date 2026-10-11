@@ -9,6 +9,7 @@ const specs = {
   wait: { fields: [{ key: 'sec', label: '시간 (s)', kind: 'number' }], outputs: [{ id: 'out' }] },
   join: { fields: [], outputs: [{ id: 'out' }] },
   loop: { fields: [{ key: 'count', label: '반복 횟수', kind: 'number' }], outputs: [{ id: 'repeat' }, { id: 'done' }] },
+  vlm_check: { fields: [], outputs: [{ id: 'yes', label: '예' }, { id: 'no', label: '아니오' }] },
   play_episode: { fields: [{ key: 'dataset', label: '데이터셋', kind: 'dataset' }, { key: 'episode', label: '에피소드', kind: 'episode' }], outputs: [{ id: 'out' }], resource: 'arm' },
 }
 const n = (id, type, data = {}) => ({ id, type, data })
@@ -54,5 +55,10 @@ assert.deepEqual(checkGraph(g, specs, 3), [])
 // 녹화 동작 재생: 데이터셋을 안 고르면 오류, 고르면 통과 (에피소드 칸은 숫자 검사 대상 아님)
 assert.deepEqual(checkGraph({ nodes: [n('s', 'start'), n('p', 'play_episode', { dataset: '', episode: 0 })], edges: [e('s', 'p')] }, specs, 3).map((i) => i.text), ["'데이터셋'을 고르세요"])
 assert.deepEqual(checkGraph({ nodes: [n('s', 'start'), n('p', 'play_episode', { dataset: 'motion', episode: '0' })], edges: [e('s', 'p')] }, specs, 3), [])
+
+// 분기 한쪽이 비면 주의 (양쪽 다 이으면 통과, 양쪽 다 비면 끝 블록이라 조용히), 반복의 '완료'는 비어도 괜찮음
+assert.deepEqual(checkGraph({ nodes: [n('s', 'start'), n('v', 'vlm_check'), mj('a')], edges: [e('s', 'v'), e('v', 'a', 'yes')] }, specs, 3).map((i) => `${i.level}:${i.node}:${i.text}`), ["warn:v:'아니오' 쪽이 연결되지 않아 그쪽으로 가면 실행이 끝납니다"])
+assert.deepEqual(checkGraph({ nodes: [n('s', 'start'), n('v', 'vlm_check'), mj('a'), mj('b')], edges: [e('s', 'v'), e('v', 'a', 'yes'), e('v', 'b', 'no')] }, specs, 3), [])
+assert.deepEqual(checkGraph({ nodes: [n('s', 'start'), n('v', 'vlm_check')], edges: [e('s', 'v')] }, specs, 3), [])
 
 console.log('check OK')

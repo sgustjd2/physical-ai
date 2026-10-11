@@ -2,7 +2,7 @@
 // 알려주고 여기서는 그리기만 한다. 새 노드 타입을 추가해도 이 파일은 고치지 않는다.
 // 캔버스의 노드는 요약만(어떤 배율에서도 읽히도록), 편집은 선택했을 때 뜨는 설정 패널에서 실제 크기로 한다.
 // 추가·삭제는 Dify 편집기 방식: 출력 점의 + (다음 블록), 연결선 가운데 + (사이에 끼우기), 선택한 노드 위 툴바.
-import { createContext, useContext, useState } from 'react'
+import { createContext, useContext, useEffect, useState } from 'react'
 import { BaseEdge, EdgeLabelRenderer, getSmoothStepPath, Handle, NodeToolbar, Position, useReactFlow } from '@xyflow/react'
 import { CameraSelect, CameraView, useImageTopics } from './Camera'
 import { Hint } from './Hint'
@@ -62,14 +62,13 @@ export function FlowNode({ id, type, data, selected, dragging }) {
       {type !== 'start' && <Handle type="target" position={Position.Top} />}
       <div className="node-head">
         <span className="node-icon" aria-hidden="true">{spec?.icon ? <Icon name={spec.icon} size={14} /> : <span className="node-dot" />}</span>
-        <span className="node-title">{data.title || (spec?.label ?? type)}</span>
+        <span className="node-title" title={data.title && spec ? `${data.title} (${spec.label})` : undefined}>{data.title || (spec?.label ?? type)}</span>
         {worst && (
           <span className={`node-issue ${worst}`} role="img" aria-label={`${worst === 'error' ? '실행 전 문제' : '주의'}: ${issues.map((i) => i.text).join(', ')}`}
             title={issues.map((i) => i.text).join('\n')}>
             <Icon name="alert" size={14} />
           </span>
         )}
-        {type !== 'start' && (spec || data.title) && <span className="node-type" translate="no">{data.title ? spec?.label ?? type : type}</span>}
       </div>
       {(!spec || spec.fields.length > 0) && (
         <div className="node-body">
@@ -95,7 +94,7 @@ export function FlowNode({ id, type, data, selected, dragging }) {
 }
 
 // 연결선: 가운데에 분기 라벨(예/아니오…)과, 마우스를 올리거나 선택하면 '사이에 블록 추가' + 버튼
-export function FlowEdge({ id, sourceX, sourceY, targetX, targetY, sourcePosition, targetPosition, markerEnd, style, label, selected }) {
+export function FlowEdge({ source, target, id, sourceX, sourceY, targetX, targetY, sourcePosition, targetPosition, markerEnd, style, label, selected }) {
   const act = useContext(NodeActions)
   const [hover, setHover] = useState(false)
   const [path, x, y] = getSmoothStepPath({ sourceX, sourceY, targetX, targetY, sourcePosition, targetPosition })
@@ -107,7 +106,8 @@ export function FlowEdge({ id, sourceX, sourceY, targetX, targetY, sourcePositio
       <EdgeLabelRenderer>
         <div className={`edge-tools nodrag nopan${hover || selected ? ' show' : ''}`} style={{ transform: `translate(-50%, -50%) translate(${x}px, ${y}px)` }} {...on}>
           {label && <span className="edge-label">{label}</span>}
-          <button className="edge-add" onClick={(e) => act.openPicker(e.currentTarget, { edge: id })} title="이 사이에 블록 추가" aria-label="이 사이에 블록 추가">
+          <button className="edge-add" onClick={(e) => act.openPicker(e.currentTarget, { edge: id })} title="이 사이에 블록 추가"
+            aria-label={`${act.labelOf?.(source) ?? ''}와 ${act.labelOf?.(target) ?? ''} 사이에 블록 추가`} tabIndex={selected ? 0 : -1}>
             <Icon name="plus" size={12} />
           </button>
         </div>
@@ -116,7 +116,25 @@ export function FlowEdge({ id, sourceX, sourceY, targetX, targetY, sourcePositio
   )
 }
 
+// 실제 로봇을 움직이는 버튼: 한 번 누르면 3초 동안 '한 번 더 눌러 이동'으로 바뀌고, 그때 다시 눌러야 움직인다 (터치 오작동 방지)
+function RealMove({ disabled, onMove }) {
+  const [armed, setArmed] = useState(false)
+  useEffect(() => {
+    if (!armed) return
+    const t = setTimeout(() => setArmed(false), 3000)
+    return () => clearTimeout(t)
+  }, [armed])
+  return (
+    <button className={`real-move${armed ? ' armed' : ''}`} disabled={disabled}
+      onClick={() => { if (armed) { setArmed(false); onMove() } else setArmed(true) }}
+      title="실제 로봇을 이 자세로 움직여 확인합니다 (두 번 눌러야 움직임)">
+      <Icon name="arm" />{armed ? '한 번 더 눌러 이동 (실제 로봇)' : '실제 로봇으로 이동'}
+    </button>
+  )
+}
+
 function Joints({ id, value, duration }) {
+  const robot = useContext(Robot)
   const { updateNodeData } = useReactFlow()
   const names = useContext(JointNames)
   const vals = Array.from({ length: names.length || value?.length || 0 }, (_, i) => value?.[i] ?? 0)
@@ -137,11 +155,9 @@ function Joints({ id, value, duration }) {
           title="지금 로봇 자세를 이 노드에 저장 (조그로 맞춘 뒤 누르기)">
           현재 자세 저장
         </button>
-        <button disabled={!names.length} onClick={() => moveTo(vals.map(Number), Number(duration) || 2)}
-          title="실제 로봇을 이 자세로 움직여 확인">
-          실제 로봇으로 이동
-        </button>
       </div>
+      <RealMove disabled={!names.length || !robot.connected || robot.estop || robot.running}
+        onMove={() => moveTo(vals.map(Number), Number(duration) || 2)} />
     </fieldset>
   )
 }
