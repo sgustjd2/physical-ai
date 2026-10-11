@@ -102,10 +102,10 @@ assert end['state'] == 'error', end
 
 # 4) 에피소드 녹화: 시작 → 이동 → 성공 종료. bag 안에 관절 상태와 명령이 들어 있어야 함
 end = run_until_end(
-    [{'id': 'e1', 'type': 'episode_start', 'data': {'task': '스모크 테스트'}},
+    [{'id': 'e1', 'type': 'episode_start', 'data': {'task': '스모크 테스트'}}, wait_node('settle', 0.5),  # 녹화기 시작 직후 CPU가 몰리는 순간을 피해 움직임
      {'id': 'm', 'type': 'move_j', 'data': {'joints': [0, 0, 0, 0, 0, 0], 'duration': 0.5}},
      {'id': 'e2', 'type': 'episode_end', 'data': {'result': 'success'}}],
-    [{'source': 's', 'target': 'e1'}, {'source': 'e1', 'target': 'm'}, {'source': 'm', 'target': 'e2'}])
+    [{'source': 's', 'target': 'e1'}, {'source': 'e1', 'target': 'settle'}, {'source': 'settle', 'target': 'm'}, {'source': 'm', 'target': 'e2'}])
 assert end['state'] == 'done', end
 spin_until(lambda: not episode['recording'] and episode['episodes'], 5)
 ep = episode['episodes'][0]

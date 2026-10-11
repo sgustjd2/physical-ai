@@ -28,7 +28,8 @@ class MockArm(Node):
         mirror = self.declare_parameter('mirror_topic', '').value
         if mirror:
             self.create_subscription(JointState, mirror, self.on_mirror, 10)
-        self.create_timer(1 / 30, self.publish)
+        # 실제 드라이버(joint_state_broadcaster)처럼 100Hz. 30Hz면 녹화를 30fps로 나눌 때 한 메시지가 두 번/건너뛰어 속도가 두 배로 보임
+        self.create_timer(1 / 100, self.publish)
         ActionServer(
             self, FollowJointTrajectory, 'arm_controller/follow_joint_trajectory', self.execute,
             goal_callback=lambda req: GoalResponse.ACCEPT
