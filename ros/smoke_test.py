@@ -288,6 +288,28 @@ assert all(abs(joints[n] - before[n]) < 0.01 for n in before), '시뮬레이션�
 end = run_until_end([{'id': 'p', 'type': 'play_episode', 'data': {'dataset': 'nope', 'episode': 0}}],
                     [{'source': 's', 'target': 'p'}], mode='sim')
 assert end['state'] == 'error' and 'smoke' in end['msg'], end['msg']  # '있는 것: smoke' 를 알려 줌
+# 19) 운영 기록: 이름 있는 실행(웹 실행 버튼)은 runs.jsonl 에 남고 오늘 요약이 /workflow/runs 로 (완료한 반복 수 포함)
+runs = []
+node.create_subscription(String, '/workflow/runs', lambda m: runs.append(json.loads(m.data)), LATCHED)
+spin_until(lambda: runs, 5)
+before_real = runs[-1]['today']['real']
+states.clear()
+run.publish(String(data=json.dumps({'name': '스모크 운영', 'mode': 'real', 'nodes': [
+    {'id': 's', 'type': 'start'}, {'id': 'l', 'type': 'loop', 'data': {'count': 2}}, wait_node('body', 0.1)], 'edges': [
+    {'source': 's', 'target': 'l'}, {'source': 'l', 'sourceHandle': 'repeat', 'target': 'body'}, {'source': 'body', 'target': 'l'}]}, ensure_ascii=False)))
+spin_until(lambda: states and states[-1]['state'] == 'done', 10)
+assert states[-1]['loop'] == [2, 2], states[-1]['loop']  # 완료한 반복 / 전체
+assert 0.15 < states[-1]['elapsed'] < 5, states[-1]['elapsed']  # 끝난 실행의 소요 초 (웹 운영 화면·상단 바가 씀)
+spin_until(lambda: runs[-1]['recent'] and runs[-1]['recent'][0]['name'] == '스모크 운영', 5)
+now_real = runs[-1]['today']['real']
+assert now_real['runs'] == before_real['runs'] + 1 and now_real['done'] == before_real['done'] + 1, (before_real, now_real)
+assert now_real['cycles'] == before_real['cycles'] + 2 and runs[-1]['recent'][0]['state'] == 'done', runs[-1]['recent'][0]
+assert (DATA.parent / 'runs.jsonl').read_text(encoding='utf-8').strip().splitlines()[-1].find('스모크 운영') > 0
+end = run_until_end([wait_node('w')], [{'source': 's', 'target': 'w'}])  # 이름 없는 실행(조그·단계 시험 등)은 기록 안 함
+t_wait = time.monotonic() + 0.5
+spin_until(lambda: time.monotonic() > t_wait, 2)  # 혹시 올 요약 갱신을 받아 봄
+assert runs[-1]['today']['real']['runs'] == now_real['runs'], runs[-1]['today']['real']
+
 # 데이터셋 목록 (웹 드롭다운): 5초마다 훑어 /workflow/datasets 로
 datasets = []
 node.create_subscription(String, '/workflow/datasets', lambda m: datasets.append(json.loads(m.data)), LATCHED)

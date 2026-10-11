@@ -1,5 +1,5 @@
 // 상단 바의 상태 표시. 전부 기존 ROS 토픽에서 계산하며 새 API는 없다.
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { Hint } from './Hint'
 import { Icon } from './icons'
 import { useTick } from './Panels'
@@ -39,24 +39,21 @@ export function HealthBar({ connected, everConnected, executor, recorder }) {
 }
 
 // 실행 상태 + 단계 진행 + 사이클 타임. 경과 시간은 스크린리더 알림 영역 밖에 둔다 (매초 읽히지 않도록)
-export function RunStatus({ status, steps, labelOf }) {
-  const start = useRef(null)
-  const prev = useRef(status.state)
-  const [last, setLast] = useState(null)
-  const running = status.state === 'running'
-  useEffect(() => {
-    if (running && prev.current !== 'running') start.current = status.node === 'jog' ? null : performance.now()
-    if (!running && prev.current === 'running' && start.current) {
-      setLast((performance.now() - start.current) / 1000)
-      start.current = null
-    }
-    prev.current = status.state
-  }, [status.state, status.node, running])
-  useTick(200, running)
+// 실행 중이면 경과 초, 아니면 마지막 실행의 소요 초 (조그는 세지 않음) | null.
+// 실행기가 상태에 실어 보낸 elapsed 를 받은 순간부터 이어 센다 → 화면을 언제 열어도 같고, GB10·태블릿 시계 차이와 무관
+export function useRunTimer(status) {
+  const counting = status.state === 'running' && status.elapsed != null
+  const at = useMemo(() => performance.now(), [status]) // 이 상태 메시지를 받은 시각
+  useTick(200, counting)
+  if (status.elapsed == null) return null
+  return counting ? status.elapsed + (performance.now() - at) / 1000 : status.elapsed
+}
 
+export function RunStatus({ status, steps, labelOf }) {
+  const running = status.state === 'running'
+  const t = useRunTimer(status)
   const act = status.active?.length ? status.active : [status.node]
   const idx = Math.max(...act.map((id) => steps.indexOf(id)))
-  const t = running && start.current ? (performance.now() - start.current) / 1000 : last
   const seg = (i) => (status.state === 'done' ? 'past' : i < idx ? 'past' : i === idx ? 'now' : '')
   return (
     <div className={`runstat ${status.state}`}>

@@ -14,10 +14,11 @@ import { robotModel } from './robotModel'
 import { Icon } from './icons'
 import { LibraryMenu } from './Library'
 import {
-  datasetsTopic, episodeTopic, generateTopic, libraryTopic, logTopic, nodeTypesTopic, onRobotInfo, robotInfo, ros, runWorkflow, sendLibrary, setEstop, statusTopic, stopWorkflow, url,
+  datasetsTopic, episodeTopic, runsTopic, generateTopic, libraryTopic, logTopic, nodeTypesTopic, onRobotInfo, robotInfo, ros, runWorkflow, sendLibrary, setEstop, statusTopic, stopWorkflow, url,
 } from './ros'
 import { CATEGORY_COLORS, defaults, FlowEdge, FlowNode, Inspector, Issues, JointNames, NodeActions, outputsOf, Robot, Specs, START } from './nodes'
 import { elapsed, Episodes, Jog, Logs, Tabs, Topics, useTick } from './Panels'
+import { OpsView } from './Ops'
 import { ConnectionBanner, EstopBanner, HealthBar, Notice, RobotMode, RunStatus, StepStrip } from './Status'
 import Viewer from './Viewer'
 
@@ -120,7 +121,7 @@ export default function App() {
   const [edges, setEdges, onEdgesChange] = useEdgesState(saved.edges)
   const [name, setName] = useState(() => store.get('workflow.name', DEFAULT_NAME))
   const [savedSnap, setSavedSnap] = useState(() => store.get('workflow.savedSnap', null)) // GB10에 마지막으로 저장/연 내용
-  const [view, setView] = useState(() => store.get('view', 'edit')) // edit: 워크플로 편집 중심, twin: 디지털 트윈 중심
+  const [view, setView] = useState(() => store.get('view', 'edit')) // edit: 워크플로 편집, twin: 디지털 트윈, ops: 운영(현장 작업자)
   const [camView, setCamView] = useState(() => store.get('cameraView', '')) // 화면으로 볼 카메라 ('' = 프로파일 기본). 카메라 탭과 트윈 보기가 같이 씀
   const [connected, setConnected] = useState(ros.isConnected)
   const [everConnected, setEverConnected] = useState(ros.isConnected)
@@ -138,6 +139,7 @@ export default function App() {
   const log = useJsonTopic(logTopic, { entries: [] })
   const gen = useJsonTopic(generateTopic, {})
   const datasets = useJsonTopic(datasetsTopic, null) // null = 아직 못 받음
+  const runs = useJsonTopic(runsTopic, null) // 운영 화면 KPI (null = 아직 못 받음)
   // 노드 타입은 마지막으로 받은 것을 저장해 두어, 연결이 끊겨도 이름·색이 유지되게 한다
   const [specList, setSpecList] = useState(() => store.get('nodeTypes', []))
   const [specsLive, setSpecsLive] = useState(false)
@@ -519,7 +521,7 @@ export default function App() {
       setNotice({ tone: 'error', text: `실행 전 점검에서 문제 ${errors.length}건: ${labelOf(errors[0].node)} — ${errors[0].text}` })
       return
     }
-    runWorkflow(runGraph(), mode)
+    runWorkflow({ ...runGraph(), name: name.trim() || DEFAULT_NAME }, mode) // 이름이 있으면 실행기가 운영 기록에 남김
   }
 
   const runGraph = (ns = nodes, es = edges) => ({
@@ -574,7 +576,7 @@ export default function App() {
     return Object.fromEntries(names.map((n, i) => [n, (Number(editing.data.joints?.[i]) || 0) * Math.PI / 180]))
   }, [editing, names])
   const simRun = running && status.mode === 'sim'
-  const viewer = <Viewer large={view === 'twin'} stale={!connected} ghost={ghost} followCommand={running && !simRun} simRun={simRun} replay={!!episode.playing}
+  const viewer = <Viewer large={view !== 'edit'} stale={!connected} ghost={ghost} followCommand={running && !simRun} simRun={simRun} replay={!!episode.playing}
     plan={plan} selectedId={editing?.id} model={model} />
 
   return (
@@ -639,6 +641,7 @@ export default function App() {
                 <div className="segmented view-switch" role="radiogroup" aria-label="보기">
                   <button role="radio" aria-checked={view === 'edit'} onClick={() => setView('edit')}>편집</button>
                   <button role="radio" aria-checked={view === 'twin'} onClick={() => setView('twin')}>트윈</button>
+                  <button role="radio" aria-checked={view === 'ops'} onClick={() => setView('ops')} title="현장 작업자용: 작업 상태·진행·오늘 운영 현황">운영</button>
                 </div>
                 {view === 'edit' && (
                   <button className="ghost" onClick={layout} title="실행 순서대로 자동 배치 (분기·병렬은 옆으로)">
@@ -658,7 +661,9 @@ export default function App() {
                 <input ref={fileRef} type="file" accept=".json,application/json" hidden onChange={importJson} />
               </div>
               <Notice notice={notice} onClose={closeNotice} />
-              {view === 'twin' ? (
+              {view === 'ops' ? (
+                <OpsView status={status} steps={steps} labelOf={labelOf} runs={runs} connected={connected} viewer={viewer} />
+              ) : view === 'twin' ? (
                 <div className="twin">
                   {viewer}
                   <StepStrip steps={steps} status={status} labelOf={labelOf} selectedId={editing?.id} onSelect={toggleSelect} />

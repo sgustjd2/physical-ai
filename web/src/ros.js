@@ -55,6 +55,7 @@ robotScene.subscribe((m) => setRobotInfo('scene', JSON.parse(m.data)))
 export const libraryTopic = json('/workflow/library') // GB10에 저장된 워크플로 목록 (ros/workflow_store.py)
 export const logTopic = json('/workflow/log') // 실행 기록: 시작·종료·AI 판단 근거
 export const generateTopic = json('/workflow/generate') // AI 시나리오 생성 결과 (ros/scenario_ai.py)
+export const runsTopic = json('/workflow/runs') // 운영 기록 요약: 오늘·어제 KPI + 최근 실행 (ros/workflow_executor.py)
 export const datasetsTopic = json('/workflow/datasets') // 재생할 수 있는 학습 데이터셋 (ros/nodes/motion.py)
 
 const runTopic = json('/workflow/run')

@@ -1,13 +1,18 @@
 """워크플로 실행기: 웹 노드 에디터에서 만든 그래프를 받아 실행한다.
 
 토픽 (std_msgs/String 안에 JSON):
-  /workflow/run        ← {"nodes": [{id, type, data}], "edges": [{source, target, sourceHandle?}], "mode": "real"|"sim"}
+  /workflow/run        ← {"nodes": [{id, type, data}], "edges": [{source, target, sourceHandle?}], "mode": "real"|"sim", "name"?}
+                          name 이 있으면(웹의 실행·시뮬레이션 버튼) 운영 기록에 남긴다. 조그·홈·단계 시험은 남기지 않음
   /workflow/stop       ← std_msgs/Empty
   /workflow/estop      ← std_msgs/Bool  true = 비상정지(잠금), false = 해제. 잠긴 동안 실행·조그·홈 이동을 모두 거부
   /workflow/status     → {"state": idle|running|done|error|stopped, "node": id, "active": [id], "mode", "msg",
-                          "joints", "home"(°), "estop", "camera"(프로파일 기본 카메라 토픽)}
+                          "joints", "home"(°), "estop", "camera"(프로파일 기본 카메라 토픽), "loop": [완료 반복, 전체] | null,
+                          "elapsed": 실행 중이면 지금까지 초, 끝났으면 마지막 실행 소요 초 (조그 등은 세지 않음) | null}
   /workflow/node_types → [{type, label, group, icon, fields, outputs}]  (웹이 팔레트·입력 폼·출력 포트를 만드는 데 씀)
   /workflow/log        → {"entries": [{time, node, text}]}  최근 실행 기록 (시작·종료·AI 판단 근거 등, latched)
+  /workflow/runs       → {"date", "today": {"real": 요약, "sim": 요약}, "yesterday": {...}, "recent": [실행]}  운영 화면 KPI (latched)
+                          요약 = {runs, done, stopped, error, avg_s(완료한 실행 평균 초), cycles(완료한 반복 수)}
+                          실행 = {start, name, mode, state, seconds, cycles} — <data>/runs.jsonl 에 한 줄씩 쌓인다
   /robot_scene         → {"robot", "packages", "objects", "tcp"}  3D 작업 셀, URDF 메시 위치, 경로 미리보기의 팔 끝 링크 (로봇 프로파일의 scene·mesh_packages·tcp_link, latched)
 
 이 파일은 그래프를 걷는 일만 한다. 노드 타입별 동작은 nodes/ 플러그인에 있다.
@@ -22,7 +27,8 @@ import math
 import threading
 import time
 from collections import defaultdict, deque
-from datetime import datetime
+from datetime import date, datetime, timedelta
+from pathlib import Path
 
 import rclpy
 from rclpy.executors import ExternalShutdownException
@@ -87,6 +93,7 @@ class WorkflowExecutor(Node):
         self.graph = None
         self.sim = False
         self.run_state = {}
+        self.run_t0, self.run_elapsed, self.run_timed = None, None, False  # 상태의 elapsed (웹 시계와 무관하게 실행기 기준)
         self.cleanups = {}
         self.pubs = {}
         self.active = []
@@ -96,6 +103,13 @@ class WorkflowExecutor(Node):
         self.status_pub = self.create_publisher(String, '/workflow/status', LATCHED)
         self.log_pub = self.create_publisher(String, '/workflow/log', LATCHED)
         self.log_entries = deque(maxlen=100)
+        # 운영 기록: 실행 1건 = runs.jsonl 1줄 (앱은 지우지 않음). 오늘·어제 요약을 /workflow/runs 로
+        self.runs_file = Path(self.param('runs_file', str(Path(__file__).resolve().parent.parent / 'data' / 'runs.jsonl')))
+        self.runs = deque(load_runs(self.runs_file), maxlen=5000)  # ponytail: 최근 5000건만 메모리에 (하루 수천 건이면 늘림)
+        self.runs_pub = self.create_publisher(String, '/workflow/runs', LATCHED)
+        self.runs_day = None
+        self.publish_runs()
+        self.create_timer(60.0, lambda: self.runs_day != date.today().isoformat() and self.publish_runs())  # 자정 넘으면 '오늘'을 새로
         self.create_subscription(String, '/workflow/run', self.on_run, 10)
         self.create_subscription(Empty, '/workflow/stop', lambda _: self.stop.set(), 10)
         self.create_subscription(Bool, '/workflow/estop', self.on_estop, 10)
@@ -189,7 +203,8 @@ class WorkflowExecutor(Node):
         self.last_status = (state, node, msg)
         data = {'state': state, 'node': node, 'active': list(self.active), 'msg': msg,
                 'mode': 'sim' if self.sim else 'real', 'joints': self.joints, 'home': self.home, 'estop': self.estopped,
-                'camera': self.camera}
+                'camera': self.camera, 'loop': self.run_state.get('progress'),
+                'elapsed': (round(time.monotonic() - self.run_t0, 2) if self.run_timed else None) if state == 'running' else self.run_elapsed}
         self.status_pub.publish(String(data=json.dumps(data, ensure_ascii=False)))
 
     def on_estop(self, msg):
@@ -272,9 +287,11 @@ class WorkflowExecutor(Node):
         self.sim = graph.get('mode') == 'sim'
         self.active, self.walkers, self.errors, self.last_node = [], [], [], None
         state, node_id, err = 'done', None, ''
-        t0 = time.monotonic()
+        t0, started = time.monotonic(), datetime.now().astimezone()
         quiet = [n['id'] for n in graph.get('nodes', [])] == ['start', 'jog']  # 조그는 기록하지 않음
+        self.run_timed = not quiet
         if not quiet:
+            self.run_t0 = t0
             self.tls.node = None
             self.log(f'{"시뮬레이션" if self.sim else "실제 로봇"} 실행 시작')
         try:
@@ -301,10 +318,60 @@ class WorkflowExecutor(Node):
                 self.get_logger().error(f'정리 실패: {e!r}')
         self.active = []
         if not quiet:
+            self.run_elapsed, self.run_timed = round(time.monotonic() - t0, 1), False
             self.tls.node = node_id
             label = {'done': '완료', 'stopped': '정지됨', 'error': f'오류: {err}'}[state]
             self.log(f'{label} ({time.monotonic() - t0:.1f}s)')
+        if graph.get('name') and not quiet:
+            self.record_run({'start': started.isoformat(timespec='seconds'), 'name': str(graph['name'])[:80], 'mode': 'sim' if self.sim else 'real',
+                             'state': state, 'seconds': self.run_elapsed, 'cycles': self.run_state.get('cycles', 0)})
         self.status(state, node_id, err)
+
+    def record_run(self, rec):
+        try:
+            self.runs_file.parent.mkdir(parents=True, exist_ok=True)
+            with self.runs_file.open('a', encoding='utf-8') as f:
+                f.write(json.dumps(rec, ensure_ascii=False) + '\n')
+        except OSError as e:  # 기록 실패가 실행 결과를 바꾸지 않게
+            self.get_logger().error(f'운영 기록 저장 실패: {e!r}')
+        self.runs.append(rec)
+        self.publish_runs()
+
+    def publish_runs(self):
+        today = date.today()
+        self.runs_day = today.isoformat()
+        runs = list(self.runs)
+        self.runs_pub.publish(String(data=json.dumps({
+            'date': self.runs_day, 'today': summarize(runs, self.runs_day),
+            'yesterday': summarize(runs, (today - timedelta(days=1)).isoformat()), 'recent': runs[-8:][::-1],
+        }, ensure_ascii=False)))
+
+
+def load_runs(path):
+    """runs.jsonl → 실행 목록 (깨진 줄은 건너뜀)."""
+    try:
+        lines = path.read_text(encoding='utf-8').splitlines()
+    except OSError:
+        return []
+    out = []
+    for line in lines:
+        try:
+            out.append(json.loads(line))
+        except ValueError:
+            continue
+    return out
+
+
+def summarize(runs, day):
+    """그날(YYYY-MM-DD, 시작 시각 기준) 실행 요약 — 실제 로봇과 시뮬레이션 따로."""
+    out = {}
+    for mode in ('real', 'sim'):
+        rs = [r for r in runs if str(r.get('start', ''))[:10] == day and r.get('mode') == mode]
+        done = [r['seconds'] for r in rs if r.get('state') == 'done']
+        out[mode] = {'runs': len(rs), 'done': len(done), 'stopped': sum(r.get('state') == 'stopped' for r in rs),
+                     'error': sum(r.get('state') == 'error' for r in rs), 'avg_s': round(sum(done) / len(done), 1) if done else None,
+                     'cycles': sum(int(r.get('cycles') or 0) for r in rs)}
+    return out
 
 
 def main():

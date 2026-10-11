@@ -38,7 +38,12 @@ def loop(ctx, d):
     """'반복' 쪽으로 N번 보낸 뒤 '완료' 쪽으로 보낸다. 반복할 단계들의 끝을 이 노드로 다시 연결한다."""
     key = ('loop', ctx.current)
     n = ctx.run_state.get(key, 0)
-    if n < int(float(d.get('count') or 0)):
+    total = int(float(d.get('count') or 0))
+    # 운영 화면: 진행(완료한 반복/전체)과 처리한 반복 수. ponytail: 반복 안의 반복이면 안쪽 진행이 보이고 수는 둘 다 더해짐
+    if n:  # 직전 반복을 끝내고 돌아옴
+        ctx.run_state['cycles'] = ctx.run_state.get('cycles', 0) + 1
+    ctx.run_state['progress'] = [n, total]
+    if n < total:
         ctx.run_state[key] = n + 1
         return 'repeat'
     ctx.run_state[key] = 0
