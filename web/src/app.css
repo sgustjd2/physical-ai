@@ -305,7 +305,7 @@ input:focus-visible, select:focus-visible, textarea:focus-visible { outline-offs
 .field-head { display: flex; align-items: center; gap: 2px; }
 
 /* ---- 레이아웃 ---- */
-main { display: grid; flex: 1; grid-template-columns: minmax(0, 1fr) 380px; min-height: 0; }
+main { display: grid; flex: 1; grid-template-columns: minmax(0, 1fr) clamp(380px, 22vw, 480px); /* 와이드 모니터에서 3D·카메라를 조금 더 크게 */ min-height: 0; }
 .workspace { display: flex; flex-direction: column; min-width: 0; min-height: 0; container: workspace / inline-size; }
 /* 편집 영역이 좁으면(창 크기와 무관하게) 문서 바 버튼을 아이콘만 남긴다: 버튼이 잘리거나 가로로 넘치지 않게 */
 @container workspace (max-width: 860px) {
