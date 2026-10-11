@@ -148,7 +148,7 @@ export default function App() {
   const flowRef = useRef()
   const fileRef = useRef()
   const pendingSave = useRef(null)
-  const { screenToFlowPosition, deleteElements, fitView } = useReactFlow()
+  const { screenToFlowPosition, deleteElements, fitView, getViewport, setViewport } = useReactFlow()
   const status = useJsonTopic(statusTopic, { state: 'idle', joints: [], active: [] })
   const episode = useJsonTopic(episodeTopic, { recording: false, episodes: [], pending: true })
   const library = useJsonTopic(libraryTopic, { items: [], pending: true })
@@ -610,6 +610,25 @@ export default function App() {
   const selected = nodes.filter((n) => n.selected)
   const editing = selected.length === 1 ? selected[0] : null
   const deselect = () => setNodes((ns) => ns.map((n) => (n.selected ? { ...n, selected: false } : n)))
+
+  // 블록 설정 창이 선택한 단계를 가리면 캔버스를 그만큼만 비킨다 (1024px에선 설정 창이 캔버스의 절반, 태블릿 아래 시트는 70%를 덮음).
+  // 화면 맞춤(fitView, 300ms)이 끝난 뒤에 재서 움직임이 겹치지 않게
+  useEffect(() => {
+    if (!editing || view !== 'edit') return
+    const still = matchMedia('(prefers-reduced-motion: reduce)').matches
+    const t = setTimeout(() => {
+      const node = document.querySelector(`.react-flow__node[data-id="${editing.id}"]`)?.getBoundingClientRect()
+      const panel = document.querySelector('.inspector-panel')?.getBoundingClientRect()
+      const flow = flowRef.current?.getBoundingClientRect()
+      if (!node || !panel || !flow) return
+      const covered = node.right > panel.left && node.left < panel.right && node.bottom > panel.top && node.top < panel.bottom
+      if (!covered) return
+      const sheet = panel.width > flow.width * 0.8 // 좁은 화면: 아래에서 올라온 시트 → 위로 비킴, 넓은 화면: 오른쪽 패널 → 왼쪽으로
+      const v = getViewport()
+      setViewport(sheet ? { ...v, y: v.y - (node.bottom - panel.top + 16) } : { ...v, x: v.x - (node.right - panel.left + 16) }, { duration: still ? 0 : 200 })
+    }, still ? 0 : 320)
+    return () => clearTimeout(t)
+  }, [editing?.id, view]) // eslint-disable-line react-hooks/exhaustive-deps
   const toggleSelect = (id) => setNodes((ns) => ns.map((n) => ({ ...n, selected: n.id === id ? !n.selected : false })))
 
   // 트윈 고스트: 선택한 MoveJ 단계의 목표 자세 (실행 전에 3D로 확인)
