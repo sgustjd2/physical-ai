@@ -3,7 +3,7 @@ import {
   addEdge, Background, Controls, MarkerType, Panel, ReactFlow, useEdgesState, useNodesState, useReactFlow,
 } from '@xyflow/react'
 import { AIBuilder } from './AIBuilder'
-import { CameraPanel } from './Camera'
+import { CameraPanel, CameraView } from './Camera'
 import { anchorOf, BlockPicker } from './BlockPicker'
 import { checkGraph } from './check'
 import { copyText, instantiate, parseClip, restoreLinks } from './clipboard'
@@ -14,9 +14,9 @@ import { robotModel } from './robotModel'
 import { Icon } from './icons'
 import { LibraryMenu } from './Library'
 import {
-  datasetsTopic, episodeTopic, runsTopic, generateTopic, libraryTopic, logTopic, moveHome, nodeTypesTopic, onRobotInfo, robotInfo, ros, runWorkflow, sendLibrary, setEstop, statusTopic, stopWorkflow, url,
+  datasetsTopic, episodeTopic, runsTopic, generateTopic, libraryTopic, logTopic, moveHome, nodeTypesTopic, onRobotInfo, robotInfo, ros, runWorkflow, sendLibrary, setEstop, statusTopic, currentDeg, moveTo, sendEpisode, stopWorkflow, url,
 } from './ros'
-import { CATEGORY_COLORS, defaults, FlowEdge, FlowNode, Inspector, Issues, JointNames, NodeActions, outputsOf, Robot, Specs, START } from './nodes'
+import { CATEGORY_COLORS, defaults, FlowEdge, FlowNode, Inspector, Issues, JointNames, NodeActions, outputsOf, RealMove, Robot, Specs, START } from './nodes'
 import { elapsed, Episodes, Jog, Logs, Tabs, Topics, useTick } from './Panels'
 import { OpsView } from './Ops'
 import { Segmented } from './Segmented'
@@ -124,6 +124,13 @@ function useJsonTopic(t, init) {
     return () => t.unsubscribe(cb)
   }, [t])
   return v
+}
+
+// 녹화 재생 중: 상단 바에도 (재생은 트윈·카메라에만, 실제 로봇은 그대로)
+function PlayChip({ episode }) {
+  if (!episode.playing) return null
+  const e = episode.episodes?.find((x) => x.name === episode.playing.name)
+  return <span className="chip play" title={episode.playing.name}><Icon name="play" size={12} />녹화 재생 <b>{e?.task || '작업 설명 없음'}</b></span>
 }
 
 function RecChip({ episode }) {
@@ -487,6 +494,8 @@ export default function App() {
 
   // 드래그 없이 연결하기 (키보드·터치 대안): 인스펙터의 출력별 '다음 단계'
   const stepNo = new Map(steps.map((id, i) => [id, i + 1]))
+  // 작업자에게 보이는 단계: 합류는 흐름 장치라 뺀다 (단계 띠·상단 바 진행·가르치기 막대·운영 화면이 같은 번호를 씀)
+  const shown = steps.filter((id) => byId.get(id)?.type !== 'join')
   const linkOptions = () => nodes.filter((n) => n.type !== 'start')
     .map((n) => ({ id: n.id, no: stepNo.get(n.id) ?? Infinity, text: `${stepNo.has(n.id) ? `${stepNo.get(n.id)}.` : '(연결 안 됨)'} ${labelOf(n.id)}` }))
     .sort((a, b) => a.no - b.no)
@@ -639,11 +648,20 @@ export default function App() {
 
   // 트윈 고스트: 선택한 MoveJ 단계의 목표 자세 (실행 전에 3D로 확인)
   const ghost = useMemo(() => {
-    if (editing?.type !== 'move_j' || !names.length) return null
-    return Object.fromEntries(names.map((n, i) => [n, (Number(editing.data.joints?.[i]) || 0) * Math.PI / 180]))
-  }, [editing, names])
+    const deg = editing?.type === 'move_j' ? editing.data.joints : editing?.type === 'move_home' ? status.home : null
+    if (!deg || !names.length) return null
+    return Object.fromEntries(names.map((n, i) => [n, (Number(deg[i]) || 0) * Math.PI / 180]))
+  }, [editing, names, status.home])
+  // 재생 중인 녹화: 이름(3D 띠·상단 바)과 녹화된 카메라 토픽(트윈 보기의 큰 카메라 칸을 재생 화면으로)
+  const playEp = episode.playing && episode.episodes?.find((x) => x.name === episode.playing.name)
+  const replayCam = playEp?.topics?.find((t) => /image|camera/.test(t) && !/camera_info/.test(t))
+  // 트윈 보기에서 고른 단계에 지금 로봇 자세를 저장 (편집 보기의 '현재 자세 저장'과 같음, 되돌리기 가능)
+  const saveCurrentPose = (id) => {
+    setNodes((ns) => ns.map((n) => (n.id === id ? { ...n, data: { ...n.data, joints: currentDeg(names) } } : n)))
+    setNotice({ tone: 'info', text: `${labelOf(id)}에 지금 로봇 자세를 저장했습니다.` })
+  }
   const simRun = running && status.mode === 'sim'
-  const viewer = <Viewer large={view !== 'edit'} stale={!connected} ghost={ghost} followCommand={running && !simRun} simRun={simRun} replay={!!episode.playing}
+  const viewer = <Viewer large={view !== 'edit'} replayLabel={playEp?.task} onStopReplay={() => sendEpisode('stop_play', {})} stale={!connected} ghost={ghost} followCommand={running && !simRun} simRun={simRun} replay={!!episode.playing}
     plan={plan} selectedId={editing?.id} model={model} />
 
   return (
@@ -661,8 +679,9 @@ export default function App() {
               <RobotMode connected={connected} />
               <HealthBar connected={connected} everConnected={everConnected}
                 executor={specsLive} recorder={!episode.pending} />
-              <RunStatus status={status} steps={steps} labelOf={labelOf} />
+              <RunStatus status={status} steps={shown} labelOf={labelOf} />
               <RecChip episode={episode} />
+              <PlayChip episode={episode} />
               {status.msg && <span className="topbar-msg error-text" title={status.msg}>{status.msg}</span>}
             </div>
             <div className="actions">
@@ -733,14 +752,31 @@ export default function App() {
               </div>
               <Notice notice={notice} onClose={closeNotice} />
               {view === 'ops' ? (
-                <OpsView status={status} steps={steps} labelOf={labelOf} runs={runs} connected={connected} viewer={viewer}
+                <OpsView status={status} steps={shown} labelOf={labelOf} runs={runs} connected={connected} viewer={viewer}
                   name={name.trim() || DEFAULT_NAME} hasLoop={nodes.some((n) => n.type === 'loop')}
                   onFix={(id, todo) => { focusNode(id); setNotice({ tone: 'warn', text: todo }) }} // 편집으로 가도 할 일은 알림으로 남김
                   onHome={() => moveHome()} onRerun={() => tryRun('sim')} />
               ) : view === 'twin' ? (
                 <div className="twin">
                   {viewer}
-                  <StepStrip steps={steps} status={status} labelOf={labelOf} selectedId={editing?.id} onSelect={toggleSelect} />
+                  {editing && (
+                    <div className="teach-bar" role="group" aria-label={`${labelOf(editing.id)} 단계`}>
+                      <b>{shown.includes(editing.id) ? `${shown.indexOf(editing.id) + 1}. ` : ''}{labelOf(editing.id)}</b>
+                      {editing.type === 'move_j' ? (
+                        <>
+                          <span className="muted">조그로 맞춘 뒤 저장하면 이 단계의 목표가 됩니다</span>
+                          <button onClick={() => saveCurrentPose(editing.id)} disabled={!names.length}>현재 자세 저장</button>
+                          <RealMove disabled={!names.length || !connected || estop || running}
+                            onMove={() => moveTo((editing.data.joints || []).map(Number), Number(editing.data.duration) || 2)} />
+                        </>
+                      ) : editing.type === 'move_home'
+                        ? <span className="muted">로봇 프로파일의 홈 자세로 갑니다 ({(status.home || []).join(', ')}°)</span>
+                        : <span className="muted">이 단계는 팔 자세 목표가 없습니다</span>}
+                      <button className="icon-btn" onClick={deselect} aria-label="단계 선택 해제" title="선택 해제"><Icon name="close" /></button>
+                    </div>
+                  )}
+                  <StepStrip steps={shown} status={status} labelOf={labelOf}
+                    selectedId={editing?.id} onSelect={toggleSelect} isLoop={(id) => byId.get(id)?.type === 'loop'} />
                 </div>
               ) : (
                 <div className="flow" ref={flowRef}>
@@ -801,8 +837,14 @@ export default function App() {
             <aside aria-label="로봇">
               {/* 편집 보기: 3D / 트윈 보기: 3D가 가운데 크게 → 이 칸에는 실제 카메라 (트윈과 실물을 나란히) */}
               {view === 'edit' ? viewer : (
-                <section className="twin-camera" aria-label="카메라 실시간 화면">
-                  <CameraPanel id="twin-camera-view" connected={connected} defaultTopic={status.camera || ''} value={camView} onChange={setCamView} bare />
+                <section className="twin-camera" aria-label={replayCam ? '녹화된 카메라 화면' : '카메라 실시간 화면'}>
+                  {replayCam ? (
+                    <div className="camera-panel">
+                      <p className="replay-cam-label"><Icon name="play" size={12} />녹화 재생 화면 <span className="muted" translate="no">{replayCam}</span></p>
+                      <CameraView topic={`/replay${replayCam}`}
+                        list={[{ name: `/replay${replayCam}`, type: replayCam.endsWith('compressed') ? 'sensor_msgs/msg/CompressedImage' : 'sensor_msgs/msg/Image' }]} />
+                    </div>
+                  ) : <CameraPanel id="twin-camera-view" connected={connected} defaultTopic={status.camera || ''} value={camView} onChange={setCamView} bare />}
                 </section>
               )}
               {/* 조그·녹화·기록·토픽은 엔지니어 도구라 운영 보기에서는 숨김 (편집/트윈 보기에 그대로) */}

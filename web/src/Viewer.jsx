@@ -19,7 +19,8 @@ const REACHED_DEG = 0.5
 // replay: 녹화 재생 중 → 녹화한 자세를 그리고 실제 로봇은 반투명으로 (시뮬레이션과 같은 방식)
 // plan: { waypoints: [{id, pose}], segments: [[from, to]] } (motionPlan.js) → 팔 끝이 지나는 길, selectedId: 표시를 키울 단계
 // model: 계산용 로봇 (robotModel.js) — 팔 끝 위치를 여기서 받아 경로를 그린다
-export default function Viewer({ stale, ghost, followCommand, simRun, replay, large, plan, selectedId, model }) {
+// replayLabel: 재생 중인 녹화 이름, onStopReplay: 재생 정지 (화면 위 띠의 버튼)
+export default function Viewer({ stale, ghost, followCommand, simRun, replay, large, plan, selectedId, model, replayLabel, onStopReplay }) {
   const ref = useRef()
   const resetRef = useRef(() => {})
   const ghostRef = useRef(ghost)
@@ -58,6 +59,9 @@ export default function Viewer({ stale, ghost, followCommand, simRun, replay, la
     sun.position.set(2, 4, 3)
     scene.add(sun)
     const ghostMat = new THREE.MeshStandardMaterial({ transparent: true, opacity: 0.32, depthWrite: false })
+    const planColor = new THREE.Color()
+    const realColor = new THREE.Color()
+    let ghostMode = 'plan' // plan: 선택한 단계·명령 목표 / real: 시뮬레이션·재생 중 실제 로봇 위치
     const pathMat = new THREE.LineBasicMaterial({ transparent: true, opacity: 0.9 })
     const markMat = new THREE.MeshBasicMaterial()
     const selMat = new THREE.MeshBasicMaterial()
@@ -68,9 +72,11 @@ export default function Viewer({ stale, ghost, followCommand, simRun, replay, la
     const theme = () => {
       const css = getComputedStyle(el)
       scene.background = new THREE.Color(css.getPropertyValue('--viewer-bg').trim())
-      ghostMat.color.set(css.getPropertyValue('--accent').trim())
-      pathMat.color.set(css.getPropertyValue('--accent').trim())
-      markMat.color.set(css.getPropertyValue('--accent').trim())
+      planColor.set(css.getPropertyValue('--plan').trim())
+      realColor.set(css.getPropertyValue('--ghost-real').trim())
+      ghostMat.color.copy(ghostMode === 'real' ? realColor : planColor)
+      pathMat.color.copy(planColor)
+      markMat.color.copy(planColor)
       selMat.color.set(css.getPropertyValue('--text').trim())
       if (grid) scene.remove(grid)
       grid = new THREE.GridHelper(2, 20, css.getPropertyValue('--viewer-grid').trim(), css.getPropertyValue('--viewer-grid-sub').trim())
@@ -211,6 +217,10 @@ export default function Viewer({ stale, ghost, followCommand, simRun, replay, la
     }
     const ro = new ResizeObserver(resize)
     ro.observe(el)
+    const narrow = matchMedia('(max-width: 900px)')
+    const touchMode = () => { renderer.domElement.style.touchAction = narrow.matches ? 'pan-y' : 'none' }
+    touchMode()
+    narrow.addEventListener('change', touchMode)
 
     let raf
     const loop = () => {
@@ -220,6 +230,8 @@ export default function Viewer({ stale, ghost, followCommand, simRun, replay, la
         const sim = simRef.current || rep // 다른 자세를 그리고 실제 로봇은 고스트로
         for (const [n, v] of Object.entries(rep ? latest.replayJoints : sim ? latest.simJoints : latest.joints)) robot.joints[n]?.setJointValue(v)
         const target = sim ? latest.joints : ghostRef.current || (followRef.current ? latest.command : null)
+        const mode = sim ? 'real' : 'plan'
+        if (mode !== ghostMode) { ghostMode = mode; ghostMat.color.copy(mode === 'real' ? realColor : planColor) }
         ghostBot.visible = !!target
         let worst = null
         if (target) {
@@ -243,6 +255,7 @@ export default function Viewer({ stale, ghost, followCommand, simRun, replay, la
       clearTimeout(waitScene)
       offInfo()
       scheme.removeEventListener('change', theme)
+      narrow.removeEventListener('change', touchMode)
       clearInterval(tick)
       cancelAnimationFrame(raf)
       ro.disconnect()
@@ -258,11 +271,11 @@ export default function Viewer({ stale, ghost, followCommand, simRun, replay, la
         {stale ? (robotName ? '연결 끊김: 마지막으로 받은 자세' : '연결 대기 중') : robotName || '로봇 모델 수신 대기 중…'}
       </span>
       {(simRun || replay) && !stale && (
-        <span className="viewer-legend sim">
-          <span className="ghost-swatch" aria-hidden="true" />
-          반투명: 실제 로봇 위치 (움직이지 않음)
-          <b>{replay ? '녹화 재생 중' : '시뮬레이션 중'}</b>
-        </span>
+        <div className={`viewer-mode${replay ? ' replay' : ''}`} role="status">
+          <b>{replay ? `녹화 재생 중${replayLabel ? ` · ${replayLabel}` : ''}` : '시뮬레이션 중 · 실제 로봇은 움직이지 않습니다'}</b>
+          <span className="viewer-mode-key"><span className="ghost-swatch real" aria-hidden="true" />회색 반투명 = 실제 로봇 위치</span>
+          {replay && onStopReplay && <button onClick={onStopReplay}><Icon name="stop" />재생 정지</button>}
+        </div>
       )}
       {!simRun && !replay && remain != null && remain >= 0 && !stale && (
         <span className="viewer-legend">

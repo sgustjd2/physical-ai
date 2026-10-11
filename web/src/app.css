@@ -28,6 +28,8 @@
   --accent: #0b63ce;
   --accent-strong: #0b5cc0;
   --accent-soft: #e3eefc;
+  --plan: #b02ab8; /* 계획: 선택한 단계 목표·경로·목표 점 (파랑=실행·선택과 겹치지 않게) */
+  --ghost-real: #6b7480; /* 시뮬레이션·재생 중 실제 로봇 위치 */
   --on-accent: #ffffff;
   --ok: #1a7f37;
   --ok-soft: #e4f4e8;
@@ -63,6 +65,8 @@
     --accent: #5b9dff;
     --accent-strong: #2563d8;
     --accent-soft: #1a2a42;
+    --plan: #e07ae8;
+    --ghost-real: #9aa3ad;
     --ok: #3fb950;
     --ok-soft: #15291c;
     --run: #1a7f37;
@@ -366,17 +370,21 @@ aside {
 aside .viewer:not(.large) { flex: 0 1 300px; height: auto; min-height: 160px; }
 aside > .tabs { display: flex; flex: 1 0 240px; flex-direction: column; min-height: 0; }
 /* 트윈 보기에서 3D 자리에 들어가는 카메라: 3D 뷰처럼 남는 높이를 쓰고, 화면은 그 안에 맞춘다 */
-aside > .twin-camera { flex: 1 1 340px; min-height: 200px; padding: 10px 12px; border-bottom: 1px solid var(--border); }
-aside:has(> .twin-camera) > .tabs { flex-basis: 180px; } /* 트윈 보기는 지켜보는 화면이라 카메라에 높이를 더 준다 (탭 내용은 안에서 스크롤) */
-aside > .tabs > [role='tabpanel'] { flex: 1; min-height: 0; overflow-x: hidden; overflow-y: auto; overscroll-behavior: contain; }
-aside .table-wrap, aside /* 에피소드 보기 (재생·AI 판단·결과 고치기·지우기) */
-.ep-open { width: 100%; min-height: 0; justify-content: flex-start; gap: 6px; padding: 0; background: transparent; border: 0; color: inherit; font: inherit; text-align: left; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+aside > .twin-camera { flex: 1 1 260px; min-height: 200px; padding: 10px 12px; border-bottom: 1px solid var(--border); }
+aside:has(> .twin-camera) > .tabs { flex-basis: 260px; } /* 트윈 보기: 녹화·에피소드 목록이 쓸 만한 높이를 남긴다 (카메라와 나눠 씀, 탭 내용은 안에서 스크롤) */
+aside > .tabs > [role='tabpanel'] { flex: 1; min-height: 0; padding-inline: 3px; /* 가장자리 입력칸의 포커스 링이 잘리지 않게 */ overflow-x: hidden; overflow-y: auto; overscroll-behavior: contain; }
+/* 오른쪽 탭 안의 표·기록은 탭 패널이 스크롤 (안에서 또 스크롤하지 않게) */
+aside .table-wrap, aside .log-list { max-height: none; overflow: visible; }
+/* 에피소드 보기 (재생·AI 판단·결과 고치기·지우기) */
+.ep-open { width: 100%; min-height: 24px; justify-content: flex-start; gap: 6px; padding: 0; background: transparent; border: 0; color: inherit; font: inherit; text-align: left; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .ep-open:hover:not(:disabled) { background: transparent; text-decoration: underline; }
 .episode-table tr.selected td { background: var(--accent-soft); }
+.episode-table tr.selected .ep-ai { color: var(--text); } /* 선택 배경 위에서도 4.5:1 */
+@media (pointer: coarse) { .ep-open { min-height: var(--control-h); } }
 .ep-ai { flex: none; padding: 0 4px; border: 1px solid var(--cat-3); border-radius: var(--radius); color: var(--cat-3); font-size: var(--text-xs); font-weight: 600; }
 .ep-detail { display: grid; gap: 10px; margin: 4px 0 12px; padding: 10px 12px; background: var(--surface-2); border: 1px solid var(--border); border-radius: var(--radius-lg); }
 .ep-detail-head { display: flex; align-items: center; gap: 8px; min-width: 0; }
-.ep-detail-title { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ep-detail-title { flex: 1; min-width: 0; margin: 0; font-size: var(--text-sm); font-weight: 700; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .ep-detail-head .icon-btn { background: transparent; border-color: transparent; }
 .ep-meta { margin: -4px 0 0; font-size: var(--text-xs); overflow-wrap: anywhere; }
 .ep-play { display: flex; align-items: center; gap: 8px; }
@@ -640,7 +648,21 @@ aside:has(> .tabs #panel-camera:not([hidden])) > .tabs { flex-basis: 380px; }
 }
 .viewer-legend b { color: var(--muted); font-weight: 600; font-variant-numeric: tabular-nums; }
 .viewer-legend b.reached { color: var(--ok); }
-.ghost-swatch { width: 12px; height: 12px; border: 1px solid var(--accent); border-radius: 2px; background: color-mix(in srgb, var(--accent) 32%, transparent); }
+.ghost-swatch { width: 12px; height: 12px; border: 1px solid var(--plan); border-radius: 2px; background: color-mix(in srgb, var(--plan) 32%, transparent); }
+.ghost-swatch.real { border-color: var(--ghost-real); background: color-mix(in srgb, var(--ghost-real) 32%, transparent); }
+/* 시뮬레이션·녹화 재생 중: 3D 위 띠 (지금 보이는 팔이 실제가 아님을 크게) */
+.viewer-mode { position: absolute; top: 46px; left: 8px; right: 8px; display: flex; flex-wrap: wrap; align-items: center; gap: 4px 12px; padding: 6px 10px; background: color-mix(in srgb, var(--accent-soft) 94%, transparent); border: 1px solid var(--accent); border-radius: var(--radius); font-size: var(--text-sm); }
+.viewer-mode.replay { background: color-mix(in srgb, var(--surface-2) 94%, transparent); border-color: var(--border-strong); }
+.viewer-mode-key { display: inline-flex; align-items: center; gap: 6px; color: var(--muted); font-size: var(--text-xs); }
+.viewer-mode button { margin-left: auto; }
+/* 트윈 보기에서 고른 단계: 자세 저장·실제 로봇으로 이동 */
+.teach-bar { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 10px; padding: 8px 12px; background: var(--surface); border-top: 1px solid var(--plan); font-size: var(--text-sm); }
+.teach-bar .muted { flex: 1; min-width: 12ch; }
+.teach-bar .real-move { width: auto; margin-top: 0; }
+.replay-cam-label { display: flex; align-items: center; gap: 6px; margin: 0; font-size: var(--text-sm); font-weight: 600; }
+.panel-note { margin: -4px 0 6px; color: var(--muted); font-size: var(--text-xs); }
+.chip.play { color: var(--text); }
+.chip.play b { overflow: hidden; max-width: 16ch; text-overflow: ellipsis; white-space: nowrap; }
 
 /* 트윈 보기: 3D가 작업 영역 전체, 아래에 단계 스트립 */
 .twin { display: flex; flex: 1; flex-direction: column; min-height: 0; }
@@ -759,14 +781,15 @@ aside:has(> .tabs #panel-camera:not([hidden])) > .tabs { flex-basis: 380px; }
 }
 .step-label { overflow: hidden; text-overflow: ellipsis; }
 .step.past { color: var(--muted); }
-.step.past .step-no { background: color-mix(in srgb, var(--accent) 25%, var(--surface-3)); }
+.step.past .step-no { background: color-mix(in srgb, var(--accent) 25%, var(--surface-3)); color: var(--text); }
 .step.now { background: var(--accent-soft); border-color: var(--accent); font-weight: 600; }
-.step.now .step-no { background: var(--accent); color: var(--on-accent); }
+.step.now .step-no { background: var(--accent-strong); color: var(--on-accent); }
 .step.now.error { background: var(--danger-soft); border-color: var(--danger); }
 .step.now.error .step-no { background: var(--danger); }
 .step.now.stopped { background: var(--warn-soft); border-color: var(--warn); }
-.step.now.stopped .step-no { background: var(--warn); }
-.step.selected { outline: 2px solid var(--accent); outline-offset: 1px; }
+.step.now.stopped .step-no { background: var(--warn); color: var(--surface); }
+.step.selected { border-color: var(--plan); box-shadow: inset 0 -3px 0 var(--plan); } /* 선택 = 아래 굵은 선(목표 색), 포커스 = 바깥 링 */
+.step-loop { flex: none; padding: 0 5px; border: 1px solid var(--border-strong); border-radius: var(--radius); color: var(--muted); font-size: var(--text-xs); font-variant-numeric: tabular-nums; }
 .steps-empty { padding: 12px; background: var(--surface); border-top: 1px solid var(--border); font-size: var(--text-sm); }
 
 /* 실제 로봇 / 시뮬레이션 표시: 실제 로봇은 위험을 알리는 주의 색 */
@@ -854,7 +877,7 @@ aside:has(> .tabs #panel-camera:not([hidden])) > .tabs { flex-basis: 380px; }
 .episode-table td.num { font-size: var(--text-xs); }
 .ep-task { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .result { padding: 1px 6px; background: var(--warn-soft); border-radius: var(--radius); color: var(--warn); font-size: var(--text-xs); font-weight: 600; }
-.result.success { background: var(--ok-soft); color: var(--ok); }
+.result.success { background: var(--ok-soft); color: color-mix(in srgb, var(--ok) 80%, var(--text)); } /* 라이트에서 4.45 → 4.5 이상 */
 .result.fail, .result.error, .result.failed_to_start, .result.recorder_died { background: var(--danger-soft); color: var(--danger-text); }
 .empty { font-size: var(--text-sm); }
 
@@ -886,6 +909,7 @@ aside:has(> .tabs #panel-camera:not([hidden])) > .tabs { flex-basis: 380px; }
   .ops-side { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); overflow: visible; border-right: 0; border-bottom: 1px solid var(--border); }
   .ops-recent { grid-column: 1 / -1; }
   .ops > .viewer { grid-column: 1; grid-row: auto; height: 300px; }
+  aside > .twin-camera .camera-frame { aspect-ratio: 16 / 9; max-height: 260px; }
   aside { overflow: visible; border-top: 1px solid var(--border); border-left: 0; }
   .viewer, aside .viewer:not(.large) { flex: none; height: 240px; }
   aside > .tabs, aside > .tabs > [role='tabpanel'] { flex: none; overflow: visible; }

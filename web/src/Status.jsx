@@ -93,13 +93,14 @@ export function RobotMode({ connected }) {
   if (!mode) return null
   return (
     <span className={`mode ${mode}`} title={mode === 'sim' ? '모의 팔로 실행 중입니다. 실제 로봇은 움직이지 않습니다' : '명령이 실제 로봇을 움직입니다'}>
-      {mode === 'sim' ? '시뮬레이션' : '실제 로봇'}
+      {mode === 'sim' ? '모의 로봇' : '실제 로봇'}
     </span>
   )
 }
 
 // 트윈 보기의 워크플로 단계 스트립: 실행 위치를 따라가고, 단계를 누르면 그 목표 자세를 고스트로 미리 본다
-export function StepStrip({ steps, status, labelOf, selectedId, onSelect }) {
+// isLoop(id): 반복 블록이면 실행기가 보낸 반복 진행(status.loop)을 그 단계에 붙인다
+export function StepStrip({ steps, status, labelOf, selectedId, onSelect, isLoop = () => false }) {
   const act = status.active?.length ? status.active : status.state === 'running' ? [status.node] : []
   const cur = Math.max(-1, ...act.map((id) => steps.indexOf(id)), ['error', 'stopped'].includes(status.state) ? steps.indexOf(status.node) : -1)
   const refs = useRef({})
@@ -116,6 +117,7 @@ export function StepStrip({ steps, status, labelOf, selectedId, onSelect }) {
               aria-current={now ? 'step' : undefined} aria-pressed={selectedId === id} onClick={() => onSelect(id)}>
               <span className="step-no">{i + 1}</span>
               <span className="step-label">{labelOf(id)}</span>
+              {isLoop(id) && status.loop && status.state !== 'idle' && <span className="step-loop">{status.loop[0]}/{status.loop[1]}회</span>}
             </button>
           </li>
         )

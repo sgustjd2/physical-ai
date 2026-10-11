@@ -91,7 +91,7 @@ export function CameraView({ topic, list, compact }) {
       prev = { frames: feed.frames, at: now }
       if (feed.err) setSt({ state: 'error', msg: `화면을 그리지 못함: ${feed.err}` })
       else if (now - (feed.last || feed.started) > STALE) setSt({ state: 'stale' })
-      else if (feed.last) setSt({ state: 'live', text: `연결됨 · ${fps.toFixed(1)}fps · ${feed.info}` })
+      else if (feed.last) setSt({ state: 'live', text: `연결됨 · ${fps.toFixed(1)}fps · ${feed.info}`, said: '연결됨' })
     }, 1000)
     return () => { leave(); clearInterval(tick) }
   }, [topic, type])
@@ -103,7 +103,10 @@ export function CameraView({ topic, list, compact }) {
         <canvas ref={canvas} role="img" aria-label={topic ? `${topic} 실시간 화면` : '카메라 화면'} />
         {state !== 'live' && state !== 'stale' && <div className="camera-empty">{state === 'wait' ? '연결 중…' : '화면 없음'}</div>}
       </div>
-      <figcaption className="camera-status" role="status"><span className="dot" aria-hidden="true" />{text}</figcaption>
+      {/* 보이는 글은 fps까지, 읽어 주는 글(role=status)은 상태만 — fps가 바뀔 때마다 읽지 않게 */}
+      <figcaption className="camera-status"><span className="dot" aria-hidden="true" /><span aria-hidden="true">{text}</span>
+        <span className="sr-only" role="status">{state === 'live' ? st.said : text}</span>
+      </figcaption>
     </figure>
   )
 }

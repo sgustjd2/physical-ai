@@ -31,7 +31,7 @@ export function Jog({ names, home, disabled }) {
   const deg = currentDeg(names)
   const jog = (i, dir) => moveTo(deg.map((v, j) => (j === i ? v + dir * step : v)), 0.3)
   return (
-    <section className="panel" aria-labelledby="jog-title">
+    <section className="panel" aria-labelledby="jog-title" aria-describedby="jog-note">
       <div className="panel-head">
         <h2 id="jog-title">조그</h2>
         <button className="home-btn" onClick={() => moveHome()} disabled={disabled || !names.length}
@@ -40,6 +40,7 @@ export function Jog({ names, home, disabled }) {
         </button>
         <Segmented label="조그 간격" options={[1, 5, 10, 30].map((s) => [s, `${s}°`])} value={step} onChange={setStep} />
       </div>
+      <p className="panel-note" id="jog-note">로봇을 바로 움직입니다 (시뮬레이션 아님)</p>
       {!names.length && <p className="muted">실행기 연결을 기다리는 중…</p>}
       <div className="jog-list">
         {names.map((n, i) => (
@@ -103,6 +104,8 @@ function EpisodeDetail({ e, episode, connected, notify, onClose }) {
   const cam = (e.topics || []).find((t) => /image|camera/.test(t) && !/camera_info/.test(t))
   const camType = cam?.endsWith('compressed') ? 'sensor_msgs/msg/CompressedImage' : 'sensor_msgs/msg/Image'
   const done = e.result && e.result !== 'interrupted'
+  const head = useRef()
+  useEffect(() => { head.current?.scrollIntoView({ block: 'nearest' }); head.current?.focus({ preventScroll: true }) }, [])
   const remove = () => {
     sendEpisode('delete', { name: e.name })
     notify({ tone: 'info', text: `'${e.task || e.name}' 에피소드를 휴지통으로 옮겼습니다.`, undo: () => sendEpisode('restore', { name: e.name }) })
@@ -111,7 +114,7 @@ function EpisodeDetail({ e, episode, connected, notify, onClose }) {
   return (
     <section className="ep-detail" aria-label="에피소드 보기">
       <div className="ep-detail-head">
-        <b className="ep-detail-title">{e.task || '작업 설명 없음'}</b>
+        <h3 className="ep-detail-title" ref={head} tabIndex={-1}>{e.task || '작업 설명 없음'}</h3>
         <span className={`result ${e.result}`}>{RESULT[e.result] ?? e.result ?? '진행 중'}</span>
         <button className="icon-btn" onClick={onClose} aria-label="에피소드 보기 닫기"><Icon name="close" /></button>
       </div>

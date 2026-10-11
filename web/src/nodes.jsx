@@ -117,7 +117,7 @@ export function FlowEdge({ source, target, id, sourceX, sourceY, targetX, target
 }
 
 // 실제 로봇을 움직이는 버튼: 한 번 누르면 3초 동안 '한 번 더 눌러 이동'으로 바뀌고, 그때 다시 눌러야 움직인다 (터치 오작동 방지)
-function RealMove({ disabled, onMove }) {
+export function RealMove({ disabled, onMove }) {
   const [armed, setArmed] = useState(false)
   useEffect(() => {
     if (!armed) return
