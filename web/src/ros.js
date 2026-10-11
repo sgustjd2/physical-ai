@@ -44,6 +44,14 @@ export const nodeTypesTopic = json('/workflow/node_types') // 노드 타입과 �
 export const episodeTopic = json('/episode/status') // 녹화 상태 + 최근 에피소드
 export const robotDescription = json('/robot_description') // URDF (robots/<로봇>/ 또는 제조사 드라이버)
 export const robotScene = json('/robot_scene') // 3D 작업 셀 물체 + URDF 메시 위치 (로봇 프로파일의 scene·mesh_packages)
+// URDF와 작업 셀은 여기서 한 번만 구독해 두고 3D 뷰어·실행 전 점검이 같이 읽는다
+// (같은 토픽에 늦게 붙은 콜백은 latched 값을 다시 못 받으므로 컴포넌트마다 구독하지 않는다)
+export const robotInfo = { urdf: '', scene: null, version: 0 }
+const infoListeners = new Set()
+export const onRobotInfo = (fn) => { infoListeners.add(fn); return () => infoListeners.delete(fn) }
+const setRobotInfo = (key, value) => { robotInfo[key] = value; robotInfo.version += 1; infoListeners.forEach((fn) => fn()) }
+robotDescription.subscribe((m) => setRobotInfo('urdf', m.data))
+robotScene.subscribe((m) => setRobotInfo('scene', JSON.parse(m.data)))
 export const libraryTopic = json('/workflow/library') // GB10에 저장된 워크플로 목록 (ros/workflow_store.py)
 export const logTopic = json('/workflow/log') // 실행 기록: 시작·종료·AI 판단 근거
 export const generateTopic = json('/workflow/generate') // AI 시나리오 생성 결과 (ros/scenario_ai.py)

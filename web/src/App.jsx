@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react'
 import {
   addEdge, Background, Controls, MarkerType, Panel, ReactFlow, useEdgesState, useNodesState, useReactFlow,
 } from '@xyflow/react'
@@ -9,11 +9,12 @@ import { checkGraph } from './check'
 import { copyText, instantiate, parseClip, restoreLinks } from './clipboard'
 import { Hint } from './Hint'
 import { createHistory } from './history'
-import { motionPlan } from './motionPlan'
+import { checkMotion, motionPlan } from './motionPlan'
+import { robotModel } from './robotModel'
 import { Icon } from './icons'
 import { LibraryMenu } from './Library'
 import {
-  datasetsTopic, episodeTopic, generateTopic, libraryTopic, logTopic, nodeTypesTopic, ros, runWorkflow, sendLibrary, setEstop, statusTopic, stopWorkflow, url,
+  datasetsTopic, episodeTopic, generateTopic, libraryTopic, logTopic, nodeTypesTopic, onRobotInfo, robotInfo, ros, runWorkflow, sendLibrary, setEstop, statusTopic, stopWorkflow, url,
 } from './ros'
 import { CATEGORY_COLORS, defaults, FlowEdge, FlowNode, Inspector, Issues, JointNames, NodeActions, outputsOf, Robot, Specs, START } from './nodes'
 import { elapsed, Episodes, Jog, Logs, Tabs, Topics, useTick } from './Panels'
@@ -486,8 +487,17 @@ export default function App() {
   const snap = snapshot(nodes, edges)
   const dirty = savedSnap !== snap
 
-  // 실행 전 점검 (check.js). 위치는 보지 않으므로 드래그 중에는 다시 계산하지 않는다
-  const issues = useMemo(() => checkGraph({ nodes, edges }, specs, names.length), [snap, specs, names.length]) // eslint-disable-line react-hooks/exhaustive-deps
+  // 경로 미리보기·동작 점검 (motionPlan.js): 계산용 로봇(URDF 한계 + 팔 끝 순기구학)과 작업 셀로
+  useSyncExternalStore(onRobotInfo, () => robotInfo.version) // URDF·작업 셀이 오면 다시 그림
+  const { urdf, scene } = robotInfo
+  const model = useMemo(() => robotModel(urdf, scene?.tcp), [urdf, scene?.tcp])
+  const homeKey = (status.home || []).join()
+  const plan = useMemo(() => motionPlan({ nodes, edges }, names, status.home || []), [snap, names.join(), homeKey]) // eslint-disable-line react-hooks/exhaustive-deps
+  // 실행 전 점검 (check.js + 동작 점검). 위치는 보지 않으므로 드래그 중에는 다시 계산하지 않는다
+  const issues = useMemo(() => [
+    ...checkGraph({ nodes, edges }, specs, names.length),
+    ...checkMotion(plan, model?.limits, model && { tipAt: model.tipAt, obstacles: scene?.objects }),
+  ], [snap, specs, names.length, plan, model, scene]) // eslint-disable-line react-hooks/exhaustive-deps
   const issueMap = useMemo(() => {
     const m = new Map()
     for (const i of issues) m.set(i.node, [...(m.get(i.node) || []), i])
@@ -564,11 +574,8 @@ export default function App() {
     return Object.fromEntries(names.map((n, i) => [n, (Number(editing.data.joints?.[i]) || 0) * Math.PI / 180]))
   }, [editing, names])
   const simRun = running && status.mode === 'sim'
-  // 경로 미리보기 (motionPlan.js): 위치는 보지 않으므로 드래그 중에는 다시 계산하지 않는다
-  const homeKey = (status.home || []).join()
-  const plan = useMemo(() => motionPlan({ nodes, edges }, names, status.home || []), [snap, names.join(), homeKey]) // eslint-disable-line react-hooks/exhaustive-deps
   const viewer = <Viewer large={view === 'twin'} stale={!connected} ghost={ghost} followCommand={running && !simRun} simRun={simRun} replay={!!episode.playing}
-    plan={plan} selectedId={editing?.id} />
+    plan={plan} selectedId={editing?.id} model={model} />
 
   return (
     <Specs.Provider value={specCtx}>

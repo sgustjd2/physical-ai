@@ -1,6 +1,7 @@
 """팔 동작 노드. 표준 FollowJointTrajectory 액션을 쓰므로 ros2_control 기반 팔이면 그대로 동작한다."""
 import json
 import math
+import xml.etree.ElementTree as ET
 from pathlib import Path
 
 from action_msgs.msg import GoalStatus
@@ -20,6 +21,8 @@ ORDER = 1
 SIM_ACTION = '/sim/arm_controller/follow_joint_trajectory'  # 트윈 팔 (bringup이 /sim 에 띄움)
 DATASETS = Path(__file__).resolve().parents[2] / 'data' / 'lerobot'  # ai/convert_lerobot.py 결과 (컨테이너에선 /data/lerobot)
 LEAD_SPEED = 0.5  # rad/s: 녹화 동작 재생 전 첫 자세로 다가가는 속도 상한 (어디서 시작하든 천천히)
+PEAK = 1.5  # 정지→정지 이동의 최고 속도 / 평균 속도 (부드러운 3차 보간, 트윈 팔과 같음. 웹 점검 motionPlan.js 와 같은 값)
+LATCHED = QoSProfile(depth=1, durability=DurabilityPolicy.TRANSIENT_LOCAL)
 
 
 def setup(ctx):
@@ -33,13 +36,30 @@ def setup(ctx):
     ctx.joint_now = {'real': {}, 'sim': {}}
     ctx.create_subscription(JointState, '/joint_states', lambda m: ctx.joint_now['real'].update(zip(m.name, m.position)), 10)
     ctx.create_subscription(JointState, '/sim/joint_states', lambda m: ctx.joint_now['sim'].update(zip(m.name, m.position)), 10)
+    # 관절 한계 (URDF): 이동 명령을 팔에 보내기 전에 범위·속도를 확인한다 (웹·AI가 만든 값이 그대로 가지 않게)
+    ctx.limits = {}
+    ctx.create_subscription(String, '/robot_description', lambda m: setattr(ctx, 'limits', urdf_limits(m.data)), LATCHED)
     publish_datasets(ctx)
+
+
+def urdf_limits(urdf):
+    """URDF → {관절: (하한, 상한, 속도 rad/s)}. continuous 는 범위 없음, 속도 0 은 모름."""
+    out = {}
+    for j in ET.fromstring(urdf).iter('joint'):
+        if j.get('type') not in ('revolute', 'continuous', 'prismatic'):
+            continue
+        lim = j.find('limit')
+        lo, hi = (float(lim.get('lower', 0)), float(lim.get('upper', 0))) if lim is not None else (0.0, 0.0)
+        if j.get('type') == 'continuous' or not lo < hi:
+            lo, hi = -math.inf, math.inf
+        out[j.get('name')] = (lo, hi, float(lim.get('velocity', 0)) if lim is not None else 0.0)
+    return out
 
 
 def publish_datasets(ctx):
     """재생할 수 있는 데이터셋 목록 → /workflow/datasets (latched) [{name, episodes: [{index, task, seconds}]}].
     웹의 '녹화 동작 재생' 블록이 드롭다운으로 쓴다. 5초마다 훑고 바뀌었을 때만 보낸다 (파일은 바뀐 것만 다시 읽음)."""
-    pub = ctx.create_publisher(String, '/workflow/datasets', QoSProfile(depth=1, durability=DurabilityPolicy.TRANSIENT_LOCAL))
+    pub = ctx.create_publisher(String, '/workflow/datasets', LATCHED)
     cache, last = {}, [None]
 
     def scan():
@@ -118,7 +138,22 @@ def move(ctx, degrees, duration):
     positions = [math.radians(float(v)) for v in degrees]
     if len(positions) != len(ctx.joints):
         raise ValueError(f'조인트 값 {len(positions)}개, 필요 {len(ctx.joints)}개')
+    check_move(ctx, positions, duration)
     follow(ctx, [(positions, duration)])
+
+
+def check_move(ctx, positions, duration):
+    """URDF 범위 밖이거나 속도 한계를 넘는 이동은 팔에 보내기 전에 멈춘다. 지금 자세를 모르는 관절은 속도를 못 봄."""
+    if not duration > 0:
+        raise ValueError(f'이동 시간은 0보다 커야 함: {duration}')
+    now = ctx.joint_now['sim' if ctx.sim else 'real']
+    for j, p in zip(ctx.joints, positions):
+        lo, hi, vel = ctx.limits.get(j, (-math.inf, math.inf, 0))
+        if not lo - 1e-6 <= p <= hi + 1e-6:
+            raise RuntimeError(f'{j} {math.degrees(p):.0f}°: 범위({math.degrees(lo):.0f}~{math.degrees(hi):.0f}°) 밖')
+        need = PEAK * abs(p - now[j]) / vel if vel > 0 and j in now else 0
+        if need > duration + 1e-6:
+            raise RuntimeError(f'너무 빠름({j}): 이동 시간을 {math.ceil(need * 10) / 10}초 이상으로')
 
 
 def follow(ctx, points):

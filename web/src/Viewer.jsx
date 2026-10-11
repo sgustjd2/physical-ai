@@ -9,7 +9,7 @@ import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js'
 import { STLLoader } from 'three/examples/jsm/loaders/STLLoader.js'
 import URDFLoader from 'urdf-loader'
 import { Icon } from './icons'
-import { latest, robotDescription, robotScene } from './ros'
+import { latest, onRobotInfo, robotInfo } from './ros'
 import { packageResolver, sceneObject } from './scene3d'
 
 const HOME = { pos: [1.4, 1.0, 1.6], target: [0, 0.45, 0] }
@@ -18,7 +18,8 @@ const REACHED_DEG = 0.5
 // ghost: { 관절이름: rad } | null  (명시 목표). followCommand: 명시 목표가 없을 때 실행 중 이동 명령을 고스트로
 // replay: 녹화 재생 중 → 녹화한 자세를 그리고 실제 로봇은 반투명으로 (시뮬레이션과 같은 방식)
 // plan: { waypoints: [{id, pose}], segments: [[from, to]] } (motionPlan.js) → 팔 끝이 지나는 길, selectedId: 표시를 키울 단계
-export default function Viewer({ stale, ghost, followCommand, simRun, replay, large, plan, selectedId }) {
+// model: 계산용 로봇 (robotModel.js) — 팔 끝 위치를 여기서 받아 경로를 그린다
+export default function Viewer({ stale, ghost, followCommand, simRun, replay, large, plan, selectedId, model }) {
   const ref = useRef()
   const resetRef = useRef(() => {})
   const ghostRef = useRef(ghost)
@@ -27,18 +28,20 @@ export default function Viewer({ stale, ghost, followCommand, simRun, replay, la
   const replayRef = useRef(replay)
   const planRef = useRef(plan)
   const selRef = useRef(selectedId)
+  const modelRef = useRef(model)
   const [showPath, setShowPath] = useState(() => { try { return localStorage.getItem('viewer.path') !== '0' } catch { return true } })
   const showRef = useRef(showPath)
   const remainRef = useRef(null)
   const [robotName, setRobotName] = useState('')
   const [remain, setRemain] = useState(null) // 목표까지 남은 최대 각도(°), 목표 없으면 null
-  const [warn, setWarn] = useState('') // 3D 설정 문제 (불러오지 못한 파일, 없는 팔 끝 링크)
+  const [warn, setWarn] = useState('') // 불러오지 못한 3D 파일
   ghostRef.current = ghost
   followRef.current = followCommand
   simRef.current = simRun
   replayRef.current = replay
   planRef.current = plan
   selRef.current = selectedId
+  modelRef.current = model
   showRef.current = showPath
 
   useEffect(() => {
@@ -120,33 +123,18 @@ export default function Viewer({ stale, ghost, followCommand, simRun, replay, la
       }
       return l
     }
-    // 경로 미리보기: 화면에 안 그리는 로봇 사본으로 순기구학(관절 각도 → 팔 끝 위치)을 계산한다
-    let fkBot
-    let tcp
+    // 경로 미리보기: 팔 끝 위치(로봇 기준 ROS 좌표)는 계산용 로봇(model)에서 → 작업 셀처럼 로봇과 같은 회전
     const path = new THREE.Group()
+    path.rotation.x = -Math.PI / 2
     scene.add(path)
-    const tcpLink = (bot) => { // 팔 끝 = 루트에서 관절을 가장 많이 거친 끝 링크
-      let best
-      let depth = -1
-      for (const link of Object.values(bot.links)) {
-        if (link.children.some((c) => c.isURDFJoint)) continue
-        let d = 0
-        for (let p = link.parent; p; p = p.parent) if (p.isURDFJoint) d += 1
-        if (d > depth) { best = link; depth = d }
-      }
-      return best
-    }
-    const tipAt = (pose) => {
-      for (const [n, v] of Object.entries(pose)) fkBot.joints[n]?.setJointValue(v)
-      fkBot.updateMatrixWorld(true)
-      return tcp.getWorldPosition(new THREE.Vector3())
-    }
     let built = {}
     const buildPath = () => {
-      built = { plan: planRef.current, bot: fkBot, sel: selRef.current, show: showRef.current }
+      built = { plan: planRef.current, model: modelRef.current, sel: selRef.current, show: showRef.current }
       for (const c of [...path.children]) { path.remove(c); c.geometry.dispose() }
       const p = planRef.current
-      if (!fkBot || !tcp || !p || !showRef.current) return
+      const m = modelRef.current
+      if (!m || !p || !showRef.current) return
+      const tipAt = (pose) => new THREE.Vector3(...m.tipAt(pose))
       const byId = new Map(p.waypoints.map((w) => [w.id, w.pose]))
       const pts = []
       for (const [a, b] of p.segments) { // MoveJ는 관절 공간 보간 → 팔 끝은 곡선으로 지나감
@@ -162,9 +150,9 @@ export default function Viewer({ stale, ghost, followCommand, simRun, replay, la
       if (pts.length) path.add(new THREE.LineSegments(new THREE.BufferGeometry().setFromPoints(pts), pathMat))
       for (const w of p.waypoints) {
         const sel = w.id === selRef.current
-        const m = new THREE.Mesh(new THREE.SphereGeometry(sel ? 0.02 : 0.011, 16, 12), sel ? selMat : markMat)
-        m.position.copy(tipAt(w.pose))
-        path.add(m)
+        const dot = new THREE.Mesh(new THREE.SphereGeometry(sel ? 0.02 : 0.011, 16, 12), sel ? selMat : markMat)
+        dot.position.copy(tipAt(w.pose))
+        path.add(dot)
       }
     }
 
@@ -175,12 +163,6 @@ export default function Viewer({ stale, ghost, followCommand, simRun, replay, la
       if (robot) scene.remove(robot, ghostBot)
       robot = urdfLoader(false, gen).parse(urdfText)
       ghostBot = urdfLoader(true, gen).parse(urdfText)
-      const fkLoader = new URDFLoader()
-      fkLoader.loadMeshCb = (p, m, mat, done) => done(null) // 계산용이라 메시는 받지 않음
-      fkBot = fkLoader.parse(urdfText)
-      fkBot.rotation.x = -Math.PI / 2
-      tcp = fkBot.links[info?.tcp] || tcpLink(fkBot) // 프로파일 tcp_link, 없으면 맨 끝 링크
-      if (info?.tcp && !fkBot.links[info.tcp]) setWarn(`URDF에 팔 끝 링크 없음: ${info.tcp}`)
       ghostBot.traverse((o) => { if (o.isMesh) o.material = ghostMat })
       for (const r of [robot, ghostBot]) r.rotation.x = -Math.PI / 2 // ROS는 Z-up, three.js는 Y-up
       ghostBot.visible = false
@@ -190,17 +172,16 @@ export default function Viewer({ stale, ghost, followCommand, simRun, replay, la
     }
     // 메시 위치(/robot_scene)를 받은 뒤에 그린다. 실행기가 /robot_scene 을 안 보내면(예전 버전) 1.5초 뒤 그냥 그림
     let waitScene
-    const onUrdf = (m) => {
-      urdfText = m.data
+    const onUrdf = (text) => {
+      urdfText = text
       clearTimeout(waitScene)
       if (info) buildRobot()
       else waitScene = setTimeout(buildRobot, 1500)
     }
-    robotDescription.subscribe(onUrdf)
-    const onScene = (m) => {
-      const meshKey = (x) => JSON.stringify([x?.robot, x?.packages, x?.tcp])
-      const rebuild = meshKey(info) !== meshKey(JSON.parse(m.data))
-      info = JSON.parse(m.data)
+    const onScene = (next) => {
+      const meshKey = (x) => JSON.stringify([x?.robot, x?.packages])
+      const rebuild = meshKey(info) !== meshKey(next)
+      info = next
       setWarn('')
       for (const c of [...cell.children]) { cell.remove(c); c.traverse((o) => { o.geometry?.dispose(); o.material?.dispose?.() }) }
       for (const o of info.objects || []) {
@@ -214,7 +195,14 @@ export default function Viewer({ stale, ghost, followCommand, simRun, replay, la
       clearTimeout(waitScene)
       if (rebuild || !robot) buildRobot() // 로봇·메시 패키지 위치가 바뀌었을 때만 다시 (메시를 또 받지 않게)
     }
-    robotScene.subscribe(onScene)
+    // 받아 둔 URDF·작업 셀(ros.js)을 읽는다. 작업 셀 먼저 (메시 위치를 알고 로봇을 그리게)
+    const seen = { urdf: '', scene: null }
+    const sync = () => {
+      if (robotInfo.scene !== seen.scene) onScene(seen.scene = robotInfo.scene)
+      if (robotInfo.urdf !== seen.urdf) onUrdf(seen.urdf = robotInfo.urdf)
+    }
+    const offInfo = onRobotInfo(sync)
+    sync()
 
     const resize = () => {
       renderer.setSize(el.clientWidth, el.clientHeight, false) // CSS 크기는 app.css가 정함
@@ -243,7 +231,7 @@ export default function Viewer({ stale, ghost, followCommand, simRun, replay, la
         remainRef.current = sim ? -1 : worst
       }
       const b = built // 계획·선택·표시가 바뀌었거나 로봇을 새로 그렸으면 경로를 다시 계산 (매 프레임은 아님)
-      if (b.plan !== planRef.current || b.bot !== fkBot || b.sel !== selRef.current || b.show !== showRef.current) buildPath()
+      if (b.plan !== planRef.current || b.model !== modelRef.current || b.sel !== selRef.current || b.show !== showRef.current) buildPath()
       controls.update()
       renderer.render(scene, camera)
     }
@@ -253,8 +241,7 @@ export default function Viewer({ stale, ghost, followCommand, simRun, replay, la
 
     return () => {
       clearTimeout(waitScene)
-      robotDescription.unsubscribe(onUrdf)
-      robotScene.unsubscribe(onScene)
+      offInfo()
       scheme.removeEventListener('change', theme)
       clearInterval(tick)
       cancelAnimationFrame(raf)
@@ -284,7 +271,9 @@ export default function Viewer({ stale, ghost, followCommand, simRun, replay, la
           <b className={remain <= REACHED_DEG ? 'reached' : ''}>{remain <= REACHED_DEG ? '도달' : `남은 각도 ${remain.toFixed(1)}°`}</b>
         </span>
       )}
-      {warn && !stale && <span className="viewer-chip viewer-warn" role="status">{warn}</span>}
+      {(warn || model?.tcpMissing) && !stale && (
+        <span className="viewer-chip viewer-warn" role="status">{warn || `URDF에 팔 끝 링크 없음: ${model.tcpMissing}`}</span>
+      )}
       <button className="icon-btn viewer-path" aria-pressed={showPath} aria-label="경로 보기"
         title="경로 보기: 동작 블록 사이로 팔 끝이 지나는 길 (점 = 각 동작의 목표, 큰 점 = 선택한 단계)"
         onClick={() => setShowPath((v) => { try { localStorage.setItem('viewer.path', v ? '0' : '1') } catch { /* 저장 불가 */ } return !v })}>

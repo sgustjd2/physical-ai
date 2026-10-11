@@ -200,6 +200,14 @@ assert end['state'] == 'done' and len(end['home']) == len(end['joints']), end
 got = [math.degrees(joints[n]) for n in end['joints']]
 assert all(abs(a - b) < 0.5 for a, b in zip(got, end['home'])), got
 
+# 13-1) 이동 한계 (URDF): 범위 밖·너무 빠른 이동은 팔에 보내기 전에 오류. 실제 팔은 그대로
+before = dict(joints)
+end = run_until_end([{'id': 'm', 'type': 'move_j', 'data': {'joints': [200, 0, 0, 0, 0, 0], 'duration': 5}}], [{'source': 's', 'target': 'm'}])
+assert end['state'] == 'error' and '범위' in end['msg'], end['msg']
+end = run_until_end([{'id': 'm', 'type': 'move_j', 'data': {'joints': [0, 90, 0, 0, 0, 0], 'duration': 0.1}}], [{'source': 's', 'target': 'm'}])
+assert end['state'] == 'error' and '너무 빠름(joint2)' in end['msg'] and '0.8초' in end['msg'], end['msg']  # 1.5 × π/2 / 3.14 = 0.75 → 0.8
+assert all(abs(joints[n] - before[n]) < 0.01 for n in before), '한계 오류인데 팔이 움직임'
+
 # 14) 비상정지: 실행 중 즉시 정지 → 잠긴 동안 실행 거부 → 해제 후 다시 실행
 send([{'id': 'w', 'type': 'wait', 'data': {'sec': 0.05}}], [{'source': 's', 'target': 'w'}, {'source': 'w', 'target': 'w'}])
 spin_until(lambda: len(states) >= 3, 5)
