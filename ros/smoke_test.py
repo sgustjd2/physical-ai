@@ -304,6 +304,8 @@ spin_until(lambda: runs[-1]['recent'] and runs[-1]['recent'][0]['name'] == '스�
 now_real = runs[-1]['today']['real']
 assert now_real['runs'] == before_real['runs'] + 1 and now_real['done'] == before_real['done'] + 1, (before_real, now_real)
 assert now_real['cycles'] == before_real['cycles'] + 2 and runs[-1]['recent'][0]['state'] == 'done', runs[-1]['recent'][0]
+days = runs[-1]['days']  # 기간 리포트: 최근 28일, 마지막이 오늘
+assert len(days) == 28 and days[-1]['date'] == runs[-1]['date'] and days[-1]['real'] == now_real, days[-1]
 assert (DATA.parent / 'runs.jsonl').read_text(encoding='utf-8').strip().splitlines()[-1].find('스모크 운영') > 0
 end = run_until_end([wait_node('w')], [{'source': 's', 'target': 'w'}])  # 이름 없는 실행(조그·단계 시험 등)은 기록 안 함
 t_wait = time.monotonic() + 0.5

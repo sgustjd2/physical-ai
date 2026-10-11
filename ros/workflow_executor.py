@@ -10,7 +10,8 @@
                           "elapsed": 실행 중이면 지금까지 초, 끝났으면 마지막 실행 소요 초 (조그 등은 세지 않음) | null}
   /workflow/node_types → [{type, label, group, icon, fields, outputs}]  (웹이 팔레트·입력 폼·출력 포트를 만드는 데 씀)
   /workflow/log        → {"entries": [{time, node, text}]}  최근 실행 기록 (시작·종료·AI 판단 근거 등, latched)
-  /workflow/runs       → {"date", "today": {"real": 요약, "sim": 요약}, "yesterday": {...}, "recent": [실행]}  운영 화면 KPI (latched)
+  /workflow/runs       → {"date", "today": {"real": 요약, "sim": 요약}, "yesterday": {...}, "days": [{date, real, sim}] 최근 28일(오래된 것부터),
+                          "recent": [실행]}  운영 화면 KPI·기간 리포트 (latched)
                           요약 = {runs, done, stopped, error, avg_s(완료한 실행 평균 초), cycles(완료한 반복 수)}
                           실행 = {start, name, mode, state, seconds, cycles} — <data>/runs.jsonl 에 한 줄씩 쌓인다
   /robot_scene         → {"robot", "packages", "objects", "tcp"}  3D 작업 셀, URDF 메시 위치, 경로 미리보기의 팔 끝 링크 (로봇 프로파일의 scene·mesh_packages·tcp_link, latched)
@@ -341,9 +342,13 @@ class WorkflowExecutor(Node):
         today = date.today()
         self.runs_day = today.isoformat()
         runs = list(self.runs)
+        by_day = defaultdict(list)  # 시작 시각의 날짜(YYYY-MM-DD)별
+        for r in runs:
+            by_day[str(r.get('start', ''))[:10]].append(r)
+        days = [(today - timedelta(days=i)).isoformat() for i in range(27, -1, -1)]
         self.runs_pub.publish(String(data=json.dumps({
-            'date': self.runs_day, 'today': summarize(runs, self.runs_day),
-            'yesterday': summarize(runs, (today - timedelta(days=1)).isoformat()), 'recent': runs[-8:][::-1],
+            'date': self.runs_day, 'today': summarize(by_day[days[-1]]), 'yesterday': summarize(by_day[days[-2]]),
+            'days': [{'date': d, **summarize(by_day[d])} for d in days], 'recent': runs[-8:][::-1],
         }, ensure_ascii=False)))
 
 
@@ -362,11 +367,11 @@ def load_runs(path):
     return out
 
 
-def summarize(runs, day):
-    """그날(YYYY-MM-DD, 시작 시각 기준) 실행 요약 — 실제 로봇과 시뮬레이션 따로."""
+def summarize(runs):
+    """하루치 실행 → 요약 — 실제 로봇과 시뮬레이션 따로."""
     out = {}
     for mode in ('real', 'sim'):
-        rs = [r for r in runs if str(r.get('start', ''))[:10] == day and r.get('mode') == mode]
+        rs = [r for r in runs if r.get('mode') == mode]
         done = [r['seconds'] for r in rs if r.get('state') == 'done']
         out[mode] = {'runs': len(rs), 'done': len(done), 'stopped': sum(r.get('state') == 'stopped' for r in rs),
                      'error': sum(r.get('state') == 'error' for r in rs), 'avg_s': round(sum(done) / len(done), 1) if done else None,

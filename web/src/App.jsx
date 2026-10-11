@@ -14,7 +14,7 @@ import { robotModel } from './robotModel'
 import { Icon } from './icons'
 import { LibraryMenu } from './Library'
 import {
-  datasetsTopic, episodeTopic, runsTopic, generateTopic, libraryTopic, logTopic, nodeTypesTopic, onRobotInfo, robotInfo, ros, runWorkflow, sendLibrary, setEstop, statusTopic, stopWorkflow, url,
+  datasetsTopic, episodeTopic, runsTopic, generateTopic, libraryTopic, logTopic, moveHome, nodeTypesTopic, onRobotInfo, robotInfo, ros, runWorkflow, sendLibrary, setEstop, statusTopic, stopWorkflow, url,
 } from './ros'
 import { CATEGORY_COLORS, defaults, FlowEdge, FlowNode, Inspector, Issues, JointNames, NodeActions, outputsOf, Robot, Specs, START } from './nodes'
 import { elapsed, Episodes, Jog, Logs, Tabs, Topics, useTick } from './Panels'
@@ -507,12 +507,15 @@ export default function App() {
   }, [issues])
   const errors = issues.filter((i) => i.level === 'error')
   // 문제 있는 블록으로 이동해 선택 (오류 먼저). 트윈 보기면 편집 보기로 바꾼다
+  // 편집 보기로 바꿔 그 블록을 선택하고 화면에 맞춤 (실행 전 점검·운영 화면 조치 안내가 씀)
+  const focusNode = (id) => {
+    setView('edit')
+    setNodes((ns) => ns.map((n) => (n.selected === (n.id === id) ? n : { ...n, selected: n.id === id })))
+    requestAnimationFrame(() => fitView({ nodes: [{ id }], maxZoom: 1, duration: 300 }))
+  }
   const goToIssue = () => {
     const first = errors[0] || issues[0]
-    if (!first) return
-    setView('edit')
-    setNodes((ns) => ns.map((n) => (n.selected === (n.id === first.node) ? n : { ...n, selected: n.id === first.node })))
-    requestAnimationFrame(() => fitView({ nodes: [{ id: first.node }], maxZoom: 1, duration: 300 }))
+    if (first) focusNode(first.node)
   }
   // 오류가 있으면 실행하지 않고 첫 문제로 데려간다 (실행 도중 멈추는 대신 미리)
   const tryRun = (mode) => {
@@ -662,7 +665,8 @@ export default function App() {
               </div>
               <Notice notice={notice} onClose={closeNotice} />
               {view === 'ops' ? (
-                <OpsView status={status} steps={steps} labelOf={labelOf} runs={runs} connected={connected} viewer={viewer} />
+                <OpsView status={status} steps={steps} labelOf={labelOf} runs={runs} connected={connected} viewer={viewer}
+                  onFocusNode={focusNode} onHome={() => moveHome()} />
               ) : view === 'twin' ? (
                 <div className="twin">
                   {viewer}

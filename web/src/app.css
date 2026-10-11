@@ -685,6 +685,30 @@ aside:has(> .tabs #panel-camera:not([hidden])) > .tabs { flex-basis: 380px; }
 .ops-delta b { font-weight: 600; }
 .ops-delta.up b { color: var(--ok); }
 .ops-delta.down b { color: var(--danger-text); }
+/* 멈췄을 때 할 일: 원인 한 줄 + 할 일 + 바로가기 (오류·비상정지는 위험색, 정지는 경고색) */
+.ops-guide { display: flex; flex-direction: column; gap: 6px; padding: 10px 12px; background: var(--warn-soft); border: 1px solid var(--warn); border-radius: var(--radius-lg); }
+.ops-guide.error, .ops-guide.estop { background: var(--danger-soft); border-color: var(--danger); }
+.ops-guide h3 { display: flex; align-items: center; gap: 6px; margin: 0; font-size: var(--text-base); font-weight: 650; }
+.ops-guide h3 .icon { flex: none; color: var(--warn); }
+.ops-guide.error h3 .icon, .ops-guide.estop h3 .icon { color: var(--danger-text); }
+.ops-guide p { margin: 0; font-size: var(--text-sm); line-height: 1.5; }
+.ops-guide-detail { overflow: hidden; color: var(--muted); text-overflow: ellipsis; white-space: nowrap; }
+.ops-guide-actions { display: flex; flex-wrap: wrap; gap: 6px; }
+.ops-kpi-tools { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
+/* 일별 실행 막대: 0부터, 완료(성공색) 위에 정지·오류(위험색) */
+.ops-chart { margin: 10px 0 0; }
+.ops-chart figcaption { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 12px; margin-bottom: 6px; color: var(--muted); font-size: var(--text-xs); font-weight: 600; }
+.ops-legend { display: inline-flex; align-items: center; gap: 4px; font-weight: 400; }
+.ops-legend i { width: 10px; height: 10px; margin-left: 6px; border-radius: 2px; }
+.ops-legend i.done, .ops-bar-stack i.done { background: var(--ok); }
+.ops-legend i.fail, .ops-bar-stack i.fail { background: var(--danger); }
+.ops-bars { display: flex; align-items: stretch; gap: 4px; height: 112px; }
+.ops-axis { display: flex; flex-direction: column; justify-content: space-between; min-width: 2ch; padding-bottom: 18px; color: var(--muted); font-size: var(--text-xs); font-variant-numeric: tabular-nums; text-align: right; }
+.ops-axis b { font-weight: 400; line-height: 1; }
+.ops-bar { display: flex; flex: 1; flex-direction: column; align-items: center; gap: 4px; min-width: 0; }
+.ops-bar-stack { display: flex; flex: 1; flex-direction: column; justify-content: flex-end; width: 100%; max-width: 28px; border-bottom: 1px solid var(--border-strong); background: repeating-linear-gradient(to top, transparent 0 calc(50% - 1px), var(--border) calc(50% - 1px) 50%); }
+.ops-bar-stack i { display: block; width: 100%; }
+.ops-bar small { color: var(--muted); font-size: var(--text-xs); font-variant-numeric: tabular-nums; line-height: 14px; }
 .steps {
   display: flex;
   gap: 6px;
