@@ -4,6 +4,7 @@ import { useState } from 'react'
 import { Hint } from './Hint'
 import { Icon } from './icons'
 import { recoveryGuide } from './recovery'
+import { Segmented } from './Segmented'
 import { STATE_LABEL, useRunTimer } from './Status'
 
 const MODE = { real: '실제 로봇', sim: '시뮬레이션' }
@@ -67,6 +68,7 @@ function DayBars({ days, mode }) {
           const fail = x.stopped + x.error
           return (
             <span key={d.date} className="ops-bar" title={`${md(d.date)}: 실행 ${x.runs}회 (완료 ${x.done}, 정지·오류 ${fail})`}>
+              <small className="ops-bar-val">{x.runs || ''}</small>
               <span className="ops-bar-stack">
                 <i className="fail" style={{ height: `${(fail / max) * 100}%` }} />
                 <i className="done" style={{ height: `${(x.done / max) * 100}%` }} />
@@ -214,16 +216,8 @@ export function OpsView({ status, steps, labelOf, runs, connected, viewer, name,
             </p>
           </div>
           <div className="ops-kpi-tools">
-            <div className="segmented" role="radiogroup" aria-label="기간">
-              {Object.entries(PERIOD).map(([p, label]) => (
-                <button key={p} role="radio" aria-checked={period === p} onClick={() => setPeriod(p)}>{label}</button>
-              ))}
-            </div>
-            <div className="segmented" role="radiogroup" aria-label="집계 대상">
-              {Object.entries(MODE).map(([m, label]) => (
-                <button key={m} role="radio" aria-checked={mode === m} onClick={() => setMode(m)}>{label}</button>
-              ))}
-            </div>
+            <Segmented label="기간" options={Object.entries(PERIOD)} value={period} onChange={setPeriod} />
+            <Segmented label="집계 대상" options={Object.entries(MODE)} value={mode} onChange={setMode} />
             {period === 'days' && (
               <button className="ghost" onClick={() => exportCsv(days)} disabled={!days} title="최근 28일 일별 요약을 CSV로 저장 (실제 로봇·시뮬레이션)">
                 <Icon name="download" /><span className="label">CSV</span>

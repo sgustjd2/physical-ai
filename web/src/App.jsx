@@ -19,6 +19,7 @@ import {
 import { CATEGORY_COLORS, defaults, FlowEdge, FlowNode, Inspector, Issues, JointNames, NodeActions, outputsOf, Robot, Specs, START } from './nodes'
 import { elapsed, Episodes, Jog, Logs, Tabs, Topics, useTick } from './Panels'
 import { OpsView } from './Ops'
+import { Segmented } from './Segmented'
 import { ConnectionBanner, EstopBanner, HealthBar, Notice, RobotMode, RunStatus, StepStrip } from './Status'
 import Viewer from './Viewer'
 
@@ -645,11 +646,8 @@ export default function App() {
                   </button>
                 )}
                 <span className="spacer" />
-                <div className="segmented view-switch" role="radiogroup" aria-label="보기">
-                  <button role="radio" aria-checked={view === 'edit'} onClick={() => setView('edit')}>편집</button>
-                  <button role="radio" aria-checked={view === 'twin'} onClick={() => setView('twin')}>트윈</button>
-                  <button role="radio" aria-checked={view === 'ops'} onClick={() => setView('ops')} title="현장 작업자용: 작업 상태·진행·오늘 운영 현황">운영</button>
-                </div>
+                <Segmented className="view-switch" label="보기" value={view} onChange={setView}
+                  options={[['edit', '편집'], ['twin', '트윈'], ['ops', '운영', '현장 작업자용: 작업 상태·진행·오늘 운영 현황']]} />
                 {view === 'edit' && (
                   <button className="ghost" onClick={layout} title="실행 순서대로 자동 배치 (분기·병렬은 옆으로)">
                     <Icon name="layout" /><span className="label">정렬</span>

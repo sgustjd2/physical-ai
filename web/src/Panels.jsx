@@ -4,6 +4,7 @@ import { CameraView } from './Camera'
 import { Hint } from './Hint'
 import { Icon } from './icons'
 import { currentDeg, moveHome, moveTo, ros, sendEpisode, topic } from './ros'
+import { Segmented } from './Segmented'
 
 const RESULT = {
   success: '성공', fail: '실패', stopped: '정지', error: '오류', done: '종료', interrupted: '중단',
@@ -37,11 +38,7 @@ export function Jog({ names, home, disabled }) {
           title={`실제 로봇을 홈 자세로 이동 (${(home || []).join(', ')}°, 로봇 프로파일의 home)`}>
           <Icon name="home" />홈으로
         </button>
-        <div className="segmented" role="radiogroup" aria-label="조그 간격">
-          {[1, 5, 10, 30].map((s) => (
-            <button key={s} role="radio" aria-checked={step === s} onClick={() => setStep(s)}>{s}°</button>
-          ))}
-        </div>
+        <Segmented label="조그 간격" options={[1, 5, 10, 30].map((s) => [s, `${s}°`])} value={step} onChange={setStep} />
       </div>
       {!names.length && <p className="muted">실행기 연결을 기다리는 중…</p>}
       <div className="jog-list">
@@ -148,12 +145,8 @@ function EpisodeDetail({ e, episode, connected, notify, onClose }) {
       )}
       <div className="ep-actions">
         <span className="field-label">학습 데이터</span>
-        <div className="segmented" role="radiogroup" aria-label="결과 고치기">
-          {['success', 'fail'].map((r) => (
-            <button key={r} role="radio" aria-checked={e.result === r} disabled={!connected || !done}
-              onClick={() => e.result !== r && sendEpisode('label', { name: e.name, result: r })}>{RESULT[r]}</button>
-          ))}
-        </div>
+        <Segmented label="결과 고치기" options={['success', 'fail'].map((r) => [r, RESULT[r]])} value={e.result} disabled={!connected || !done}
+          onChange={(r) => e.result !== r && sendEpisode('label', { name: e.name, result: r })} />
         <span className="spacer" />
         <button className="ghost danger-text" onClick={remove} disabled={!connected || !done}><Icon name="trash" />지우기</button>
       </div>
