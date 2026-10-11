@@ -11,6 +11,7 @@
   bag/          rosbag2 (mcap). `ros2 bag info`, Foxglove, LeRobot 변환의 입력
   episode.json  작업 설명(지시문), 결과, 로봇, 토픽, 시각, 워크플로, vision(녹화 중 AI 비전 판단 라벨)
   record.log    ros2 bag record 출력
+  play.log      ros2 bag play 출력 (다시 보기가 조용히 실패하지 않게)
 """
 import json
 import re
@@ -117,10 +118,11 @@ class Recorder(Node):
         e = json.loads((d / 'episode.json').read_text(encoding='utf-8'))
         self.stop_play()
         remaps = [f'{t}:={REPLAY}{t}' for t in e.get('topics', [])]
-        self.player = subprocess.Popen(
-            # --delay: 새로 뜬 재생기를 구독자(웹의 rosbridge 등)가 찾을 시간을 줌. 없으면 짧은 녹화는 앞부분이나 전부를 놓침
-            ['ros2', 'bag', 'play', str(d / 'bag'), '--disable-keyboard-controls', '--delay', '1', *(['--remap', *remaps] if remaps else [])],
-            stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        with open(d / 'play.log', 'w', encoding='utf-8') as log:  # 재생이 조용히 실패하지 않게 출력을 남김 (녹화의 record.log와 같이)
+            self.player = subprocess.Popen(
+                # --delay: 새로 뜬 재생기를 구독자(웹의 rosbridge 등)가 찾을 시간을 줌. 없으면 짧은 녹화는 앞부분이나 전부를 놓침
+                ['ros2', 'bag', 'play', str(d / 'bag'), '--disable-keyboard-controls', '--delay', '1', *(['--remap', *remaps] if remaps else [])],
+                stdin=subprocess.DEVNULL, stdout=log, stderr=subprocess.STDOUT)
         self.playing = {'name': d.name, 'duration': e.get('duration')}
 
     def stop_play(self, cmd=None):

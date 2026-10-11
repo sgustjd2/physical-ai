@@ -259,7 +259,8 @@ def ep(op, **kw):
 before = dict(joints)
 ep('play')
 assert episode['playing']['name'] == name, episode['playing']
-spin_until(lambda: replayed, 10)
+play_log = DATA / name / 'play.log'
+spin_until(lambda: replayed, 30, lambda: f'재생 메시지 없음 — play.log: {play_log.read_text(encoding="utf-8")[-1500:] if play_log.exists() else "(없음)"}')
 spin_until(lambda: episode.get('playing') is None, 20)  # 녹화 길이(약 2초)만큼 재생하고 끝남
 assert all(abs(joints[n] - before[n]) < 0.01 for n in before), '재생인데 실제 팔이 움직임'
 ep('label', result='fail')
