@@ -18,7 +18,7 @@ def wait(ctx, d):
     field('value', '값', 'text', 'true'),
     field('field', '필드 (예: data, pose.x)', 'text', 'data', advanced=True),
     field('timeout', '신호 대기 시간 (s)', 'number', 5, advanced=True),
-    field('sim_result', '시뮬레이션에서 갈 방향', 'select', '예', options=['예', '아니오'], advanced=True),
+    field('sim_result', '시뮬레이션에서 갈 방향', 'select', '예', options=['예', '아니오']),  # 기본 칸: 시뮬레이션으로 두 갈래를 다 시험해 보게
 ], outputs=[('yes', '예'), ('no', '아니오')])
 def if_(ctx, d):
     """신호(토픽)의 최신 값을 한 번 보고 예/아니오로 갈라진다. 시뮬레이션에서는 지정한 방향으로 간다."""

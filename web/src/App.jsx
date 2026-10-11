@@ -66,6 +66,12 @@ const store = {
   get: (k, fallback) => { try { return JSON.parse(localStorage.getItem(k)) ?? fallback } catch { return fallback } },
   set: (k, v) => { try { localStorage.setItem(k, JSON.stringify(v)) } catch { /* 저장 불가 환경 */ } },
 }
+// 작업 중인 문서: 이 탭의 것(sessionStorage)을 먼저, 없으면 마지막으로 편집한 탭의 것(localStorage)
+// → 탭 두 개로 편집해도 새로고침 때 다른 탭의 편집을 불러와 덮어쓰지 않음. 새 탭은 마지막 편집으로 시작
+const draft = {
+  get: (k, fallback) => { try { const v = sessionStorage.getItem(k); return v != null ? JSON.parse(v) ?? fallback : store.get(k, fallback) } catch { return store.get(k, fallback) } },
+  set: (k, v) => { try { sessionStorage.setItem(k, JSON.stringify(v)) } catch { /* 저장 불가 환경 */ } store.set(k, v) },
+}
 
 // 저장·비교·전송용 그래프 (React Flow 내부 필드 제외)
 const toGraph = (nodes, edges) => ({
@@ -132,11 +138,11 @@ function RecChip({ episode }) {
 
 export default function App() {
   // 선택 상태는 저장하지 않는다 (새로고침 후 이전 인스펙터가 열린 채 시작하지 않도록)
-  const saved = useState(() => withPositions(store.get('workflow', DEFAULT)))[0]
+  const saved = useState(() => withPositions(draft.get('workflow', DEFAULT)))[0]
   const [nodes, setNodes, onNodesChange] = useNodesState(saved.nodes)
   const [edges, setEdges, onEdgesChange] = useEdgesState(saved.edges)
-  const [name, setName] = useState(() => store.get('workflow.name', DEFAULT_NAME))
-  const [savedSnap, setSavedSnap] = useState(() => store.get('workflow.savedSnap', null)) // GB10에 마지막으로 저장/연 내용
+  const [name, setName] = useState(() => draft.get('workflow.name', DEFAULT_NAME))
+  const [savedSnap, setSavedSnap] = useState(() => draft.get('workflow.savedSnap', null)) // GB10에 마지막으로 저장/연 내용
   const [view, setView] = useState(() => store.get('view', 'edit')) // edit: 워크플로 편집, twin: 디지털 트윈, ops: 운영(현장 작업자)
   const [camView, setCamView] = useState(() => store.get('cameraView', '')) // 화면으로 볼 카메라 ('' = 프로파일 기본). 카메라 탭과 트윈 보기가 같이 씀
   const [connected, setConnected] = useState(ros.isConnected)
@@ -219,11 +225,11 @@ export default function App() {
 
   // 드래그 중 매 프레임 전체 그래프를 직렬화하지 않도록 잠깐 모았다가 저장
   useEffect(() => {
-    const t = setTimeout(() => store.set('workflow', toGraph(nodes, edges)), 300)
+    const t = setTimeout(() => draft.set('workflow', toGraph(nodes, edges)), 300)
     return () => clearTimeout(t)
   }, [nodes, edges])
-  useEffect(() => store.set('workflow.name', name), [name])
-  useEffect(() => store.set('workflow.savedSnap', savedSnap), [savedSnap])
+  useEffect(() => draft.set('workflow.name', name), [name])
+  useEffect(() => draft.set('workflow.savedSnap', savedSnap), [savedSnap])
   useEffect(() => store.set('view', view), [view])
   useEffect(() => store.set('cameraView', camView), [camView])
 

@@ -72,7 +72,7 @@ def raw_to_jpeg(m):
     field('camera', '카메라', 'camera', ''),  # 비우면 프로파일의 camera_topic
     field('timeout', '이미지 대기 (s)', 'number', 3, advanced=True),
     field('on_low', '확신이 낮을 때', 'select', '정지', options=['정지', '아니오로 처리'], advanced=True),
-    field('sim_result', '시뮬레이션에서 갈 방향', 'select', '예', options=['예', '아니오'], advanced=True),
+    field('sim_result', '시뮬레이션에서 갈 방향', 'select', '예', options=['예', '아니오']),  # 기본 칸: 시뮬레이션으로 두 갈래를 다 시험해 보게
 ], outputs=[('yes', '예'), ('no', '아니오')])
 def vlm_check(ctx, d):
     """카메라 장면을 보고 예/아니오 질문에 답한다. 판단과 근거는 실행 기록에 남는다."""
