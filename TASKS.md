@@ -9,7 +9,8 @@
 - [x] `docker-compose.yml` — GB10에서 `docker compose up` 한 번으로 전체 기동
 - [x] 로컬 end-to-end 검증 (WSL + pixi/RoboStack ROS2: `smoke_test.py` 통과, 브라우저 실행/정지/조그/토픽 모니터 확인)
 - [x] README (아키텍처, 실행법, 로드맵), 첫 커밋 & push
-- [ ] GB10 실기에서 `docker compose up` 확인 (arm64 이미지 빌드, host 네트워크) — amd64 Docker 경로는 CI가 검증
+- [x] arm64 이미지 빌드·스모크·LeRobot 변환을 CI가 검증 (GitHub ubuntu-24.04-arm 러너, amd64와 같은 단계 · 2026-10-11 첫 통과 184초)
+- [ ] GB10 실기에서 `docker compose up` 확인 (DGX OS의 Docker·host 네트워크·실제 로봇과 DDS 통신) — arm64 빌드 자체는 CI가 검증
 
 ## Phase 1.5 — 확장 구조 + 에피소드 녹화
 - [x] 로봇 프로파일 `robots/<이름>/` (robot.yaml + URDF) — 로봇이 바뀌면 이 폴더만 추가, 코드 수정 없음
