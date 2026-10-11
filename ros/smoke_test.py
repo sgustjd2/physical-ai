@@ -73,6 +73,12 @@ spin_until(lambda: run.get_subscription_count() and estop.get_subscription_count
            and joints and states and episode and types and library and sim_j1 and gen, 30)
 assert {'move_j', 'move_home', 'wait', 'wait_topic', 'publish', 'episode_start', 'episode_end', 'if', 'loop', 'join', 'gripper', 'vlm_check'} <= {t['type'] for t in types}
 assert next(t for t in types if t['type'] == 'if')['outputs'] == [{'id': 'yes', 'label': '예'}, {'id': 'no', 'label': '아니오'}]
+# 3D 작업 셀과 URDF 메시 위치: 로봇 프로파일(scene·mesh_packages) → /robot_scene (웹이 /robots/<로봇>/… 에서 파일을 받음)
+scene = []
+node.create_subscription(String, '/robot_scene', lambda m: scene.append(json.loads(m.data)), LATCHED)
+spin_until(lambda: scene, 5)
+assert scene[-1]['robot'] == 'demo_arm' and scene[-1]['packages'] == {'demo_arm': '.'}, scene[-1]
+assert [o['shape'] for o in scene[-1]['objects']] == ['box', 'mesh', 'cylinder', 'box'], scene[-1]['objects']
 # 장비 선언: 웹의 실행 전 점검이 같은 장비를 동시에 쓰는 병렬 갈래를 막는 데 씀
 assert {t['type']: t.get('resource') for t in types if t.get('resource')} == {'move_j': 'arm', 'move_home': 'arm', 'play_episode': 'arm', 'gripper': 'gripper'}
 

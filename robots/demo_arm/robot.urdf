@@ -6,7 +6,8 @@
   <material name="accent"><color rgba="0.24 0.55 0.99 1"/></material>
 
   <link name="base_link">
-    <visual><origin xyz="0 0 0.05"/><geometry><cylinder radius="0.09" length="0.1"/></geometry><material name="dark"/></visual>
+    <!-- 메시 예시: package://<패키지>/… 는 웹이 /robots/<로봇>/<mesh_packages 에서 정한 폴더>/… 에서 받는다 -->
+    <visual><geometry><mesh filename="package://demo_arm/meshes/base.stl"/></geometry><material name="dark"/></visual>
   </link>
 
   <joint name="joint1" type="revolute">

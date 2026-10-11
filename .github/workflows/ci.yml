@@ -15,7 +15,7 @@ jobs:
           node-version: 24
           cache: npm
           cache-dependency-path: web/package-lock.json
-      - run: npm ci && npm run build && node src/history.test.js && node src/clipboard.test.js && node src/cameraFrames.test.js && node src/check.test.js
+      - run: npm ci && npm run build && node src/history.test.js && node src/clipboard.test.js && node src/cameraFrames.test.js && node src/check.test.js && node src/scene3d.test.js
         working-directory: web
 
   ros:

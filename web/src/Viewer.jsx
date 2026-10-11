@@ -1,12 +1,16 @@
 // 디지털 트윈 뷰: /robot_description(URDF)을 three.js로 그리고 매 프레임 /joint_states 최신값을 반영한다.
 // 반투명 '고스트'는 목표 자세(선택한 MoveJ 노드, 또는 실행 중 받은 이동 명령)를 겹쳐 보여 준다.
 // 시뮬레이션 실행 중에는 트윈 팔(/sim)이 움직이고, 고스트는 그대로 있는 실제 로봇 위치를 보여 준다. 로봇이 바뀌어도 코드 그대로.
+// 작업 셀(작업대·지그·상자 등)은 /robot_scene 으로 받아 같이 그리고, URDF·작업 셀의 메시 파일은 /robots/<로봇>/… 에서 받는다.
 import { useEffect, useRef, useState } from 'react'
 import * as THREE from 'three'
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js'
+import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js'
+import { STLLoader } from 'three/examples/jsm/loaders/STLLoader.js'
 import URDFLoader from 'urdf-loader'
 import { Icon } from './icons'
-import { latest, robotDescription } from './ros'
+import { latest, robotDescription, robotScene } from './ros'
+import { packageResolver, sceneObject } from './scene3d'
 
 const HOME = { pos: [1.4, 1.0, 1.6], target: [0, 0.45, 0] }
 const REACHED_DEG = 0.5
@@ -23,6 +27,7 @@ export default function Viewer({ stale, ghost, followCommand, simRun, replay, la
   const remainRef = useRef(null)
   const [robotName, setRobotName] = useState('')
   const [remain, setRemain] = useState(null) // 목표까지 남은 최대 각도(°), 목표 없으면 null
+  const [meshError, setMeshError] = useState('') // 불러오지 못한 3D 파일
   ghostRef.current = ghost
   followRef.current = followCommand
   simRef.current = simRun
@@ -45,12 +50,14 @@ export default function Viewer({ stale, ghost, followCommand, simRun, replay, la
 
     // 배경·그리드·고스트 색은 CSS 토큰에서 읽어 라이트/다크 테마를 따른다
     let grid
+    let floor = 0 // 바닥 그리드 높이: 작업 셀이 있으면 가장 낮은 물체 아래 (작업대 윗면과 겹쳐 깜빡이지 않게)
     const theme = () => {
       const css = getComputedStyle(el)
       scene.background = new THREE.Color(css.getPropertyValue('--viewer-bg').trim())
       ghostMat.color.set(css.getPropertyValue('--accent').trim())
       if (grid) scene.remove(grid)
       grid = new THREE.GridHelper(2, 20, css.getPropertyValue('--viewer-grid').trim(), css.getPropertyValue('--viewer-grid-sub').trim())
+      grid.position.y = floor - 0.002
       scene.add(grid)
     }
     theme()
@@ -65,13 +72,47 @@ export default function Viewer({ stale, ghost, followCommand, simRun, replay, la
     }
     resetRef.current()
 
+    // 3D 파일 불러오기 (STL / GLB·GLTF). 실패하면 뷰어에 알림
+    const stl = new STLLoader()
+    const gltf = new GLTFLoader()
+    let gen = 0 // 다시 그릴 때마다 증가: 지난 빌드의 늦게 온 실패는 알리지 않음
+    const failed = (url, g = gen) => (err) => { console.warn('3D 파일을 불러오지 못함', url, err); if (g === gen) setMeshError(url.split('/').pop()) }
+    const loadMesh = (url, done) => {
+      if (/\.(glb|gltf)$/i.test(url)) gltf.load(url, (g) => done(g.scene), undefined, failed(url))
+      else stl.load(url, (geom) => done(new THREE.Mesh(geom)), undefined, failed(url))
+    }
+
+    // 작업 셀: 로봇 기준(ROS Z 위쪽) 좌표 → 로봇과 같은 회전
+    const cell = new THREE.Group()
+    cell.rotation.x = -Math.PI / 2
+    scene.add(cell)
+    let info = null // { robot, packages, objects }
+    let urdfText = null
+
     let robot
     let ghostBot
-    // ponytail: 기본 도형 URDF만 그려짐. package:// 메시는 메시 파일을 HTTP로 서빙하고 loader.packages 를 지정해야 함
-    const onUrdf = (m) => {
+    // URDF 메시(package://…)는 /robots/<로봇>/… 에서. 메시는 나중에 도착하므로 고스트 색은 고스트용 로더가 직접 입힌다
+    const urdfLoader = (forGhost, g) => {
+      const l = new URDFLoader()
+      if (info?.robot) l.packages = packageResolver(info.robot, info.packages)
+      l.loadMeshCb = (path, manager, material, done) => {
+        const finish = (mesh, err) => {
+          if (err) failed(path, g)(err)
+          if (forGhost) mesh?.traverse((o) => { if (o.isMesh) o.material = ghostMat })
+          done(mesh, err)
+        }
+        if (/\.(glb|gltf)$/i.test(path)) new GLTFLoader(manager).load(path, (g) => finish(g.scene), undefined, (e) => finish(null, e))
+        else l.defaultMeshLoader(path, manager, material, finish)
+      }
+      return l
+    }
+    const buildRobot = () => {
+      if (!urdfText) return
+      gen += 1
+      setMeshError('')
       if (robot) scene.remove(robot, ghostBot)
-      robot = new URDFLoader().parse(m.data)
-      ghostBot = new URDFLoader().parse(m.data)
+      robot = urdfLoader(false, gen).parse(urdfText)
+      ghostBot = urdfLoader(true, gen).parse(urdfText)
       ghostBot.traverse((o) => { if (o.isMesh) o.material = ghostMat })
       for (const r of [robot, ghostBot]) r.rotation.x = -Math.PI / 2 // ROS는 Z-up, three.js는 Y-up
       ghostBot.visible = false
@@ -79,7 +120,33 @@ export default function Viewer({ stale, ghost, followCommand, simRun, replay, la
       setRobotName(robot.robotName || '로봇')
       renderer.domElement.setAttribute('aria-label', `${robot.robotName || '로봇'} 3D 자세`)
     }
+    // 메시 위치(/robot_scene)를 받은 뒤에 그린다. 실행기가 /robot_scene 을 안 보내면(예전 버전) 1.5초 뒤 그냥 그림
+    let waitScene
+    const onUrdf = (m) => {
+      urdfText = m.data
+      clearTimeout(waitScene)
+      if (info) buildRobot()
+      else waitScene = setTimeout(buildRobot, 1500)
+    }
     robotDescription.subscribe(onUrdf)
+    const onScene = (m) => {
+      const meshKey = (x) => JSON.stringify([x?.robot, x?.packages])
+      const rebuild = meshKey(info) !== meshKey(JSON.parse(m.data))
+      info = JSON.parse(m.data)
+      setMeshError('')
+      for (const c of [...cell.children]) { cell.remove(c); c.traverse((o) => { o.geometry?.dispose(); o.material?.dispose?.() }) }
+      for (const o of info.objects || []) {
+        const obj = sceneObject(o, info.robot, loadMesh)
+        if (obj) cell.add(obj)
+      }
+      cell.updateMatrixWorld(true)
+      const box = new THREE.Box3().setFromObject(cell)
+      floor = box.isEmpty() ? 0 : Math.min(0, box.min.y)
+      if (grid) grid.position.y = floor - 0.002
+      clearTimeout(waitScene)
+      if (rebuild || !robot) buildRobot() // 로봇·메시 패키지 위치가 바뀌었을 때만 다시 (메시를 또 받지 않게)
+    }
+    robotScene.subscribe(onScene)
 
     const resize = () => {
       renderer.setSize(el.clientWidth, el.clientHeight, false) // CSS 크기는 app.css가 정함
@@ -115,7 +182,9 @@ export default function Viewer({ stale, ghost, followCommand, simRun, replay, la
     const tick = setInterval(() => setRemain(remainRef.current == null ? null : Math.round(remainRef.current * 10) / 10), 200)
 
     return () => {
+      clearTimeout(waitScene)
       robotDescription.unsubscribe(onUrdf)
+      robotScene.unsubscribe(onScene)
       scheme.removeEventListener('change', theme)
       clearInterval(tick)
       cancelAnimationFrame(raf)
@@ -145,6 +214,7 @@ export default function Viewer({ stale, ghost, followCommand, simRun, replay, la
           <b className={remain <= REACHED_DEG ? 'reached' : ''}>{remain <= REACHED_DEG ? '도달' : `남은 각도 ${remain.toFixed(1)}°`}</b>
         </span>
       )}
+      {meshError && !stale && <span className="viewer-chip viewer-warn" role="status">3D 파일을 불러오지 못함: {meshError}</span>}
       <button className="icon-btn viewer-reset" onClick={() => resetRef.current()} aria-label="시점 초기화" title="시점 초기화">
         <Icon name="view" />
       </button>

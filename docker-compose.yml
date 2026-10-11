@@ -32,4 +32,6 @@ services:
   web:
     build: ./web
     ports: ["8080:80"]
+    volumes:
+      - ./robots:/usr/share/nginx/html/robots:ro  # URDF 메시·작업 셀 파일 (웹 3D 뷰가 /robots/<로봇>/… 로 받음)
     restart: unless-stopped

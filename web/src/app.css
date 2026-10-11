@@ -674,6 +674,7 @@ aside:has(> .tabs #panel-camera:not([hidden])) > .tabs { flex-basis: 380px; }
 .view-switch { margin-right: 4px; }
 .list-title .result { font-weight: 600; }
 .viewer.stale .viewer-chip { color: var(--warn); }
+.viewer-chip.viewer-warn { top: auto; bottom: 8px; color: var(--warn); }
 .viewer-chip {
   position: absolute;
   top: 8px;

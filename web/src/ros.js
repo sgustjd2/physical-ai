@@ -43,6 +43,7 @@ export const statusTopic = json('/workflow/status') // 실행 상태 + 관절 �
 export const nodeTypesTopic = json('/workflow/node_types') // 노드 타입과 입력 필드 선언 (ros/nodes/*.py)
 export const episodeTopic = json('/episode/status') // 녹화 상태 + 최근 에피소드
 export const robotDescription = json('/robot_description') // URDF (robots/<로봇>/ 또는 제조사 드라이버)
+export const robotScene = json('/robot_scene') // 3D 작업 셀 물체 + URDF 메시 위치 (로봇 프로파일의 scene·mesh_packages)
 export const libraryTopic = json('/workflow/library') // GB10에 저장된 워크플로 목록 (ros/workflow_store.py)
 export const logTopic = json('/workflow/log') // 실행 기록: 시작·종료·AI 판단 근거
 export const generateTopic = json('/workflow/generate') // AI 시나리오 생성 결과 (ros/scenario_ai.py)

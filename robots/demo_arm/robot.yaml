@@ -21,6 +21,20 @@ mock: true
 # 제조사 드라이버가 직접 /robot_description 을 발행하면 이 줄을 지운다.
 urdf: robot.urdf
 
+# URDF의 package://<패키지>/… 메시가 있는 폴더 (이 프로파일 폴더 기준). 적지 않으면 패키지 이름과 같은 폴더.
+# 제조사 description 패키지(예: ur_description)를 이 폴더에 그대로 복사하면 따로 적을 필요 없음
+mesh_packages:
+  demo_arm: .
+
+# 작업 셀: 3D 뷰와 디지털 트윈에 로봇과 함께 그려지는 물체. 단위 m·라디안, 위치는 로봇 기준(base_link, Z 위쪽)
+#   shape: box(size: [x, y, z]) | cylinder(radius, height) | sphere(radius) | mesh(file: 이 폴더 기준 STL/GLB, scale)
+#   xyz: 물체 가운데(메시는 원점), rpy: [roll, pitch, yaw], color: '#rrggbb', opacity: 0~1
+scene:
+  - {name: 작업대, shape: box, size: [1.2, 0.8, 0.04], xyz: [0.3, 0, -0.02], color: '#8a7a62'}
+  - {name: 부품 받침, shape: mesh, file: meshes/fixture.stl, xyz: [0.42, 0.18, 0], rpy: [0, 0, 1.5708], color: '#5f6b77'}
+  - {name: 부품, shape: cylinder, radius: 0.022, height: 0.045, xyz: [0.37, 0.27, 0.0345], color: '#c0392b'}
+  - {name: 오른쪽 상자, shape: box, size: [0.22, 0.16, 0.09], xyz: [0.45, -0.32, 0.045], color: '#3d5a73', opacity: 0.85}
+
 # 그리퍼 노드가 보내는 토픽 (std_msgs/Bool, true=닫기). 장비에 맞게 바꾼다
 gripper_topic: /gripper/cmd
 

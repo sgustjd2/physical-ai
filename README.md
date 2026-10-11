@@ -119,7 +119,10 @@ WSL 미러 네트워킹에서는 DDS 디스커버리가 막히므로 `export FAS
    ros2_control `joint_trajectory_controller`를 쓰는 드라이버면 `/joint_states` + `FollowJointTrajectory`를 그대로 제공합니다.
 3. `.env`에 `ROBOT=<이름>` 넣고 `docker compose up -d`.
 
-> 3D 뷰어는 지금 기본 도형 URDF만 그립니다. `package://` 메시를 쓰는 제조사 URDF는 메시 파일 서빙이 추가로 필요합니다 (`TASKS.md` Phase 2).
+4. **메시가 있는 제조사 URDF**: description 패키지(예: `ur_description`)를 `robots/<이름>/` 안에 그대로 복사하면 `package://ur_description/…` 메시를 웹이 `/robots/<이름>/ur_description/…`에서 받습니다 (STL·DAE·GLB). 폴더 이름이 다르면 `robot.yaml`의 `mesh_packages`에 `패키지: 폴더`로 적습니다.
+5. **작업 셀**: `robot.yaml`의 `scene`에 작업대·지그·상자 등을 적으면 3D 뷰와 디지털 트윈에 로봇과 함께 그려집니다 (상자·원기둥·구 또는 STL/GLB 파일, 위치는 로봇 기준 m·라디안). 데모 프로파일에 예시가 있습니다.
+
+> 웹(nginx)은 `robots/` 폴더를 읽기 전용으로 `/robots/`에 마운트해 메시·작업 셀 파일을 줍니다 (개발 서버도 같은 경로).
 
 ## 새 노드 타입 추가
 

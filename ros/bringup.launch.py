@@ -43,6 +43,9 @@ def setup(context):
             executor[key] = cfg[key]
     if cfg.get('home'):
         executor['home'] = [float(v) for v in cfg['home']]  # double 배열로 넘겨야 파라미터 타입이 맞음
+    # 3D 작업 셀(scene)과 URDF 메시 패키지 위치 → 실행기가 /robot_scene 으로 웹에 알림 (파일은 웹이 /robots/<robot>/ 에서 받음)
+    executor['robot'] = robot
+    executor['scene'] = json.dumps({'packages': cfg.get('mesh_packages') or {}, 'objects': cfg.get('scene') or []})
     actions = [
         script('workflow_executor.py', **executor),
         script('workflow_store.py'),
