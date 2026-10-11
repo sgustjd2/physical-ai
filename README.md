@@ -22,6 +22,7 @@
 | 홈 자세 | `robots/<이름>/robot.yaml`의 `home` (°) | 없음 |
 | 웹 비상정지를 드라이버/안전 PLC에도 알리기 | `robot.yaml`의 `estop_topic` (std_msgs/Bool) | 받는 쪽 연결 |
 | AI 기능 켜기 | GB10의 `.env`에 `ANTHROPIC_API_KEY=...` (저장소에 넣지 않음) | 없음 |
+| 웹 접속 비밀번호·허용 주소 | GB10의 `.env`에 `WEB_PASSWORD=...` (아이디 `WEB_USER`, 기본 operator), 태블릿 대역만 열려면 `WEB_ALLOW=192.168.10.0/24` | 없음 |
 | AI 비전 판단에 쓸 카메라 | `robots/<이름>/robot.yaml`의 `camera_topic` (실제 카메라를 달면 `mock_camera` 줄 삭제) | 없음 |
 | 카메라 등 녹화할 토픽 추가 | `robots/<이름>/robot.yaml`의 `record_topics` | 없음 |
 | 새 장비/기능을 워크플로 노드로 | `ros/nodes/<파일>.py` 하나 추가 | 웹은 수정 없음 (UI 자동 생성) |
@@ -34,8 +35,8 @@
 flowchart LR
   B["브라우저 (아무 PC)<br/>노드 에디터 · 3D 뷰어 · 조그 · 녹화 · 토픽 모니터"]
   subgraph GB10["GB10 (DGX OS, arm64) · docker compose"]
-    W["web (nginx :8080)"]
-    RB["rosbridge :9090"]
+    W["web (nginx :8080)<br/>비밀번호 → /ros 중계"]
+    RB["rosbridge 127.0.0.1:9090<br/>(GB10 안에서만)"]
     EX["workflow_executor<br/>+ nodes/ 플러그인"]
     ST["workflow_store<br/>(data/workflows)"]
     AI["scenario_ai<br/>(AI로 만들기)"]
@@ -87,7 +88,9 @@ flowchart LR
 git clone https://github.com/sgustjd2/physical-ai.git && cd physical-ai
 docker compose up -d --build
 ```
-브라우저에서 `http://<GB10 IP>:8080`. `ros/`, `robots/`는 마운트되어 있어서 수정 후 `docker compose restart ros`만 하면 됩니다.
+브라우저에서 `http://<GB10 IP>:8080` → 아이디 `operator`와 비밀번호. 비밀번호는 `.env`의 `WEB_PASSWORD`이고, 비워 두면 처음 시작할 때 만들어 `docker compose logs web`에 한 번 보여 줍니다 (`data/web/web-password`에 보관). `ros/`, `robots/`는 마운트되어 있어서 수정 후 `docker compose restart ros`만 하면 됩니다.
+
+> **접속 보호**: 로봇을 움직이는 rosbridge(:9090)는 GB10 안(127.0.0.1)에서만 받고, 브라우저는 웹(:8080)의 `/ros`로 붙습니다. 웹은 비밀번호를 확인한 뒤 세션 쿠키를 주고, `/ros`는 그 쿠키가 있어야 열립니다 (웹소켓에 비밀번호 헤더를 안 붙이는 브라우저가 있어 쿠키로 확인). 같은 LAN의 다른 PC가 웹을 거치지 않고 실행·비상정지 해제 명령을 보낼 수 없습니다. 지금은 HTTP라 비밀번호가 암호화되지 않으므로, 현장 망이 공용이면 `WEB_ALLOW`로 태블릿 대역만 열고 HTTPS(인증서)를 붙이세요. 이 보호는 소프트웨어 접근 제어이며 하드웨어 비상정지 회로를 대신하지 않습니다.
 
 동작 확인:
 ```bash
@@ -98,10 +101,10 @@ docker compose exec ros bash -c "source /opt/ros/jazzy/setup.bash && cd /ros && 
 ```bash
 cd web && npm install && npm run dev
 ```
-`http://localhost:5173/?ros=ws://<GB10 IP>:9090` 처럼 `?ros=`로 다른 머신의 rosbridge에 붙을 수 있습니다.
-Windows/Mac의 Docker Desktop은 `network_mode: host`가 다르게 동작하므로, ROS 컨테이너만 직접 띄울 땐:
+개발 서버도 운영처럼 `/ros`를 rosbridge(기본 `ws://127.0.0.1:9090`)로 중계합니다. 다른 곳의 rosbridge면 `ROSBRIDGE=ws://<IP>:9090 npm run dev`, 또는 `http://localhost:5173/?ros=ws://<IP>:9090` 처럼 `?ros=`로 직접 붙습니다 (그 rosbridge가 LAN에 열려 있어야 함 — 개발 PC에서만).
+Windows/Mac의 Docker Desktop은 `network_mode: host`가 다르게 동작하므로, ROS 컨테이너만 직접 띄울 땐 rosbridge를 컨테이너 밖으로 열어야 합니다 (개발 PC에서만, GB10에서는 쓰지 않음):
 ```bash
-docker build -t physical-ai-ros ros && docker run --rm -p 9090:9090 -v ./ros:/ros -v ./robots:/robots -v ./data:/data physical-ai-ros
+docker build -t physical-ai-ros ros && docker run --rm -p 127.0.0.1:9090:9090 -e ROSBRIDGE_ADDRESS=0.0.0.0 -v ./ros:/ros -v ./robots:/robots -v ./data:/data physical-ai-ros
 ```
 Docker 없이 WSL(Ubuntu 24.04)에서 [pixi](https://pixi.sh) + RoboStack(`robostack-jazzy` 채널)으로 sudo 없이 ROS2를 띄울 수도 있습니다.
 WSL 미러 네트워킹에서는 DDS 디스커버리가 막히므로 `export FASTDDS_BUILTIN_TRANSPORTS=SHM`(같은 머신 안 통신만)을 켜야 합니다.

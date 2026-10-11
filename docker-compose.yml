@@ -1,9 +1,10 @@
-# GB10(DGX OS, arm64)에서:  docker compose up -d --build   →  http://<GB10 IP>:8080
+# GB10(DGX OS, arm64)에서:  docker compose up -d --build   →  http://<GB10 IP>:8080  (아이디 operator, 비밀번호는 .env 의 WEB_PASSWORD 또는 처음 시작 로그: docker compose logs web)
 # 로봇 고르기: .env 에 ROBOT=<robots/ 아래 폴더 이름>  (기본 demo_arm = 모의 팔)
 services:
   ros:
     build: ./ros
-    # DDS(ROS2 통신)가 같은 네트워크의 실제 로봇/다른 PC와 통하려면 host 네트워크가 필요. rosbridge는 :9090
+    # DDS(ROS2 통신)가 같은 네트워크의 실제 로봇/다른 PC와 통하려면 host 네트워크가 필요.
+    # rosbridge(:9090)는 이 PC 안(127.0.0.1)에서만 받는다 → 브라우저는 웹(:8080)의 /ros 로 (비밀번호 확인 뒤)
     network_mode: host
     ipc: host
     volumes:
@@ -31,7 +32,13 @@ services:
 
   web:
     build: ./web
-    ports: ["8080:80"]
+    # rosbridge(127.0.0.1:9090)에 중계하려고 호스트 네트워크. nginx가 :8080 에서 받음
+    network_mode: host
     volumes:
       - ./robots:/usr/share/nginx/html/robots:ro  # URDF 메시·작업 셀 파일 (웹 3D 뷰가 /robots/<로봇>/… 로 받음)
+      - ./data/web:/data                          # 자동 생성한 웹 비밀번호 보관
+    environment:
+      - WEB_USER=${WEB_USER:-operator}
+      - WEB_PASSWORD=${WEB_PASSWORD:-}           # .env 에 넣는다 (repo에 넣지 않음). 비우면 처음 시작할 때 만들어 로그에 한 번 보여 줌
+      - WEB_ALLOW=${WEB_ALLOW:-}                 # 예: 192.168.10.0/24 (비우면 비밀번호만 확인)
     restart: unless-stopped

@@ -23,4 +23,8 @@ const serveRobots = {
   },
 }
 
-export default defineConfig({ plugins: [react(), serveRobots] })
+// 운영(nginx)과 같이 /ros 를 rosbridge로 중계. 다른 곳의 rosbridge면 ROSBRIDGE=ws://IP:9090 npm run dev
+export default defineConfig({
+  plugins: [react(), serveRobots],
+  server: { proxy: { '^/ros$': { target: process.env.ROSBRIDGE || 'ws://127.0.0.1:9090', ws: true, rewrite: () => '/' } } },
+})

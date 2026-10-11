@@ -163,7 +163,7 @@ export function ConnectionBanner({ connected, everConnected, url }) {
       <Hint label="연결 문제 해결 방법">
         {everConnected
           ? '로봇 자세와 실행 상태는 마지막으로 받은 값이라 실제 로봇과 다를 수 있습니다. 연결되면 자동으로 갱신됩니다.'
-          : <>{url}에 연결을 시도하고 있습니다. GB10에서 ROS 스택(docker compose)이 실행 중인지 확인하세요. 다른 주소라면 주소창 끝에 <code>?ros=ws://IP:9090</code>을 붙여 접속합니다.</>}
+          : <>{url}에 연결을 시도하고 있습니다. GB10에서 ROS 스택(docker compose)이 실행 중인지 확인하세요. 접속 비밀번호가 바뀌었으면 페이지를 새로고침해 다시 로그인합니다.</>}
       </Hint>
     </div>
   )

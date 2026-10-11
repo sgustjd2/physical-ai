@@ -2,7 +2,7 @@
 
   ros2 launch bringup.launch.py robot:=demo_arm
 
-  항상: rosbridge(웹소켓 :9090), 워크플로 실행기·저장소·AI 시나리오 생성기, 에피소드 녹화기,
+  항상: rosbridge(웹소켓 :9090, 기본은 이 PC 안(127.0.0.1)에서만 — 웹은 nginx의 /ros 로 중계, 환경변수 ROSBRIDGE_ADDRESS로 바꿈), 워크플로 실행기·저장소·AI 시나리오 생성기, 에피소드 녹화기,
         디지털 트윈 팔(/sim — 시뮬레이션 실행용, 쉬는 동안 실제 자세를 따라감)
   mock: true 이면 모의 팔, mock_camera: true 이면 모의 카메라(camera_topic), urdf 가 있으면 robot_state_publisher(/robot_description, /tf)
 """
@@ -70,6 +70,8 @@ def generate_launch_description():
                              'launch', 'rosbridge_websocket_launch.xml')
     return LaunchDescription([
         DeclareLaunchArgument('robot', default_value='demo_arm', description='robots/ 아래 프로파일 이름'),
-        IncludeLaunchDescription(AnyLaunchDescriptionSource(rosbridge)),
+        # 인증 없는 rosbridge를 LAN에 직접 열지 않는다: 웹(nginx)이 비밀번호 확인 뒤 /ros 로 중계 (docker-compose.yml, web/nginx-entrypoint.sh)
+        IncludeLaunchDescription(AnyLaunchDescriptionSource(rosbridge),
+                                 launch_arguments={'address': os.environ.get('ROSBRIDGE_ADDRESS', '127.0.0.1')}.items()),
         OpaqueFunction(function=setup),
     ])

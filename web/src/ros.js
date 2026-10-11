@@ -1,8 +1,8 @@
 // rosbridge 연결 하나를 앱 전체가 공유한다. 웹은 특정 로봇을 모른다: 로봇 정보는 전부 ROS 토픽으로 받는다.
-// 주소 기본값: 웹을 연 호스트의 :9090. 다른 PC의 브리지에 붙으려면 ?ros=ws://IP:9090
+// 주소 기본값: 웹을 연 서버의 /ros (nginx·개발 서버가 rosbridge로 중계, 운영은 비밀번호를 거친 세션만). 직접 붙으려면 ?ros=ws://IP:9090
 import { Ros, Topic } from 'roslib'
 
-export const url = new URLSearchParams(location.search).get('ros') || `ws://${location.hostname}:9090`
+export const url = new URLSearchParams(location.search).get('ros') || `${location.protocol === 'https:' ? 'wss' : 'ws'}://${location.host}/ros`
 export const ros = new Ros()
 
 // 30Hz로 오는 값은 React state로 두지 않고 여기 두고, 필요한 쪽(3D 렌더 루프 등)이 읽어간다
