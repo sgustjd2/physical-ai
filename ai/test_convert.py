@@ -81,4 +81,10 @@ with tempfile.TemporaryDirectory() as tmp:
     conv = json.loads((root / 'out' / 'conversion.json').read_text(encoding='utf-8'))
     assert {s['reason'] for s in conv['skipped']} == {'result=fail', 'task 없음'}, conv['skipped']
 
+    # 변환 결과 점검기: 학습이 읽는 그대로 열어 시간·action·카메라·지시문 확인 (단색 합성 영상이라 주의는 나올 수 있음)
+    from check_dataset import check_dataset
+    problems, _, lines = check_dataset(root / 'out', root / 'robots')
+    assert problems == [], problems
+    assert len(lines) == 1, lines
+
 print('test_convert OK')

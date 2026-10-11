@@ -182,6 +182,7 @@ docker compose run --rm ai python convert_lerobot.py /data/episodes --out /data/
   - `action: /leader/joint_states`: 리더-팔로워 텔레옵이면 리더 팔 토픽
 - 프레임은 `fps` 간격으로 리샘플링합니다 (각 시각 직전의 최신 메시지). 카메라는 `sensor_msgs/Image`(rgb8·bgr8·mono8 등)와 `CompressedImage`를 지원합니다.
 - ROS 설치 없이 동작합니다 (mcap 파일에 메시지 정의가 들어 있음). 결과 폴더의 `conversion.json`에 어떤 녹화에서 어떤 설정으로 만들었는지 남습니다.
+- 점검: `docker compose run --rm ai python check_dataset.py /data/lerobot/pick_v1` — 학습이 읽는 그대로 열어서 프레임 간격(1/fps)·frame_index, action=다음 프레임 상태(next_state), 관절 값이 URDF 한계·속도 한계 안인지, 카메라 프레임 디코딩·크기, 지시문을 확인합니다. 문제가 있으면 종료 코드 1 (화면이 거의 단색이거나 내내 멈춰 있으면 '주의'로만 표시). CI도 변환 직후 이 점검을 돌립니다.
 - 확인: `LeRobotDataset('local/pick_v1', root='data/lerobot/pick_v1')`
 
 ## 워크플로 노드 (기본 제공)
